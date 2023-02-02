@@ -1,0 +1,28 @@
+{
+    "newScan": [
+        {
+        "settings": {
+            "shared": 1,
+            "enabled": false,
+            "acls": [
+                {
+                    "type": "default",
+                    "permissions": 0
+                },
+                {
+                    "permissions": 16,
+                    "owner": 0,
+                    "display_name": "",
+                    "name": "Name Of Access Control Group",
+                    "type": "group"
+                },
+                {
+                    "permissions": 128,
+                    "owner": 1,
+                    "display_name": "Name of Scan Owner",
+                    "name": "emailAddress@example.com",
+                    "type": "user"
+                }]
+            } }
+    ]
+}
