@@ -42,7 +42,7 @@ def set_default(obj):
 # Function to get the UUID of the network you want
 def get_network_uuid(NETWORK_NAME):
     return[{nw['uuid'] for nw in io.networks.list(('name', 'match', NETWORK_NAME))}]
-# Target Network UUID for MT Network
+# Target Network UUID for NETWORK
 TARGET_NETWORK_UUID = json.dumps(get_network_uuid(NETWORK_NAME), default=set_default)
 
 # Function to get UUID of tags to be used for the scan from TAG_NAME
