@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 """ tenable_io_scan_update_schedule.py: Updates the schedule for scans in FOLDER_ID"""
 """ See: https://pytenable.readthedocs.io/en/stable/api/io/scans.html#tenable.io.scans.ScansAPI.create_scan_schedule"""
 

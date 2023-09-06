@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 """ tenable_io_agent_group_create.py: Creates an agent group that agent scans can reference"""
 """ Reference pyTenable Documentation: https://pytenable.readthedocs.io/en/stable/api/io/scans.html#tenable.io.scans.ScansAPI.create """
 

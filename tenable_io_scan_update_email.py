@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 """ tenable_io_scan_update_email.py: Updates the notification emails for scans in FOLDER_ID"""
 
 ### Import Modules

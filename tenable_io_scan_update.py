@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 """ tenable_io_scan_update.py: Updates the scans to be AUTO-ROUTED and to be associated to the target network by TARGET_NETWORK_UUID"""
 
 ### Import Modules

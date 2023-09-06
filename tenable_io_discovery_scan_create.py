@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 """ tenable_io_scan_create.py: Creates a custom host discovery scan within a specified folder which targets specifc tags"""
 """ Reference pyTenable Documentation: https://pytenable.readthedocs.io/en/stable/api/io/scans.html#tenable.io.scans.ScansAPI.create """
 

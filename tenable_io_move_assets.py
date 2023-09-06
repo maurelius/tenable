@@ -1,4 +1,3 @@
-#!/usr/bin/python
 """ tenable_io_move_assets.py: Move assets from Default Network with IP_NETWORK to DEST Network """
 
 ### Import Modules
