@@ -6,4 +6,4 @@ Use `pip install -r requirements.txt` to grab the necessary Python modules
 
 ## Note
 
-If you don't want to have your `accessKey` and `secretKey` in plaintext, consider using the [akvsecrets](https://github.com/maurelius/azkvsecrets) module.
+If you don't want to have your `accessKey` and `secretKey` in plaintext, consider using the [azkvsecrets](https://github.com/maurelius/azkvsecrets) module.
