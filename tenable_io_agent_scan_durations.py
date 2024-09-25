@@ -24,20 +24,30 @@ asset_scans = defaultdict(list)
 
 # Regular expression to extract scan duration
 duration_pattern = re.compile(r'Scan duration\s*:\s*(\d+)\s*sec')
+scan_type_pattern = re.compile(r'Scan type\s*:\s*(.+)')
 
 # Process each entry in the data
 for entry in data:
     plugin_output = entry.get('plugin_output', '')
-    # Extract scan duration
-    match = duration_pattern.search(plugin_output)
-    if match:
-        duration = int(match.group(1))
-        # Extract asset information
-        for state in entry.get('states', []):
-            for result in state.get('results', []):
-                for asset in result.get('assets', []):
-                    fqdn = asset.get('fqdn', 'Unknown')
-                    asset_scans[fqdn].append(duration)
+    
+    # Extract scan type
+    scan_type_match = scan_type_pattern.search(plugin_output)
+    if scan_type_match:
+        scan_type = scan_type_match.group(1).strip()
+        
+        # Only process if 'Agent' is in the scan type
+        if 'Agent' in scan_type:
+            # Extract scan duration
+            duration_match = duration_pattern.search(plugin_output)
+            if duration_match:
+                duration = int(duration_match.group(1))
+                
+                # Extract asset information
+                for state in entry.get('states', []):
+                    for result in state.get('results', []):
+                        for asset in result.get('assets', []):
+                            fqdn = asset.get('fqdn', 'Unknown')
+                            asset_scans[fqdn].append(duration)
 
 # Calculate average scan duration for each asset
 average_durations = {}
@@ -54,4 +64,4 @@ for fqdn, avg_duration in average_durations.items():
     print(f'Asset: {fqdn}, Average Scan Duration: {avg_duration:.2f} seconds')
 
 # Output the total sum of scan durations and combined average
-print(f'\nTotal Sum of All Scan Durations: {total_sum} seconds\nCombined average of all scans (seconds): {total_avg:.2f}\nCombined average of all scans (minutes): {total_minutes}')
+print(f'\nTotal Sum of All Scan Durations: {total_sum} seconds\nCombined Average of All Scans (seconds): {total_avg:.0f}\nCombined Average of All Scans (minutes): {total_minutes:.0f}')
