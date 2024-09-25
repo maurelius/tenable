@@ -1,4 +1,5 @@
 """tenable_io_agent_scan_durations.py: Grabs the scan durations from every agent, averages them, then calculates a total combined average"""
+"""Reference pyTenable Documentation: https://pytenable.readthedocs.io/en/stable/api/io/workbenches.html#tenable.io.workbenches.WorkbenchesAPI.vuln_info"""
 
 # Setup modules
 import re
