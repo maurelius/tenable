@@ -5,7 +5,6 @@
 import logging
 from tenable.io import TenableIO
 from tenable.errors import BadRequestError
-from tqdm import tqdm
 
 ### Define some Variables
 # Set up logging
@@ -21,7 +20,7 @@ SCANS = io.scans.list()
 KEYWORD = input("Enter the keyword of scans you want to rename (E.g., All scans with 'keyword' in the name):")
 
 ### Let's move on
-print(f'Renaming any scans with {KEYWORD} in the name and prepending ''MT: ''')
+print(f'Renaming any scans with {KEYWORD} in the name and prepending ''Keyword: ''')
 # Loop through the scans looking for your keyword, then rename them
 for scan in SCANS:
     if KEYWORD in scan['name']:
