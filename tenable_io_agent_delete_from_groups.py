@@ -3,19 +3,15 @@
 
 import logging
 
-from pprint import pprint
-from tenable.io import TenableIO
 from tqdm import tqdm
 import ipaddress
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
-# Define keys to auth to API
-accessKey = '1234'
-secretKey = '1234'
 # Bootstrap API connection
-io = TenableIO(access_key=accessKey, secret_key=secretKey)
+io = get_tenable_io_client()
 
 agent_groups = [(d['id'], d['name']) for d in io.agent_groups.list() if not d['name'].startswith('CHANGE-ME')]
 agents = io.agents.list()

@@ -1,9 +1,7 @@
 """install_linux_sensor.py: Installs a Tenable.io network scanner onto a Linux server, locally, and links it to our container"""
 __version__ = "1.0"
 
-# Import Azure KV Module from https://github.com/maurelius/azkvsecrets
-# If you don't use this method, comment out the line below and store it as plaintext in a variable below
-from Azure import az_kv_secrets as azkv
+import os
 import subprocess
 import socket
 import getpass  # This is for retrieving your sudo password securely
@@ -13,12 +11,12 @@ scanner_name = socket.gethostname()
 # Change this to the scanner group it should be added to
 # If you want, you can grab the group names via `[d['name'] for d in io.scanner_groups.list()]`
 scanner_group = "your_scanner_group"
-# Grab the key from a keyvault to link to our container
-# Comment this out if you don't import the KV module
-linkingKey = azkv.get_linkingKey()
-# Uncomment linkingKey below to store it in plaintext if you don't import the KV module above
+
+# Get the Tenable linking key from an environment variable.
 # Reference Documentation: https://docs.tenable.com/vulnerability-management/Content/Settings/Sensors/RetrieveAgentLinkingKey.htm
-# linkingKey = "ChangeMeToYourLinkingKey"
+linkingKey = os.getenv("TENABLE_LINKING_KEY")
+if not linkingKey:
+    raise ValueError("TENABLE_LINKING_KEY environment variable must be set.")
 
 def install_scanner(linkingKey, scanner_name, scanner_group):
   # Get password securely from user

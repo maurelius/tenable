@@ -1,15 +1,12 @@
 """tenable_io_scan_update_permissions.py: Update scan permissions for every scan in a specified folder"""
 import logging
-from tenable.io import TenableIO
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
-# Define keys to auth to API
-accessKey = '1234'
-secretKey = '1234'
 # Bootstrap API connection
-io = TenableIO(access_key=accessKey, secret_key=secretKey)
+io = get_tenable_io_client()
 # Store all the scans
 MY_SCANS = io.scans.list()
 # Store list of managed credentials

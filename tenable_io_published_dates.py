@@ -1,18 +1,15 @@
 """tenable_io_published_dates.py: Grabs a subset of CVE publication dates, Tenable plugin publication dates and calculates the average time between CVE and Plugin publications"""
 
 import logging
-from tenable.io import TenableIO
 from datetime import datetime, timedelta
 import statistics
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
-# Define keys to auth to API
-accessKey = '1234'
-secretKey = '1234'
 # Bootstrap API connection
-io = TenableIO(access_key=accessKey, secret_key=secretKey)
+io = get_tenable_io_client()
 
 # Get the current date and the date 90 days ago
 current_date = datetime.now()

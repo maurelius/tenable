@@ -4,19 +4,15 @@
 
 ### Import Modules
 import logging
-from pprint import pprint
-from tenable.io import TenableIO
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
-## Define API keys
-accessKey = '1234'
-secretKey = '1234'
 ## Define what Network you want to filter out
 NETWORK = "NETWORK_NAME"
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
 # Bootstrap Tenable API connection
-io = TenableIO(access_key=accessKey, secret_key=secretKey)
+io = get_tenable_io_client()
 scanner_list = io.scanners.list()
 
 # Create a text file in the working directory of the script and add scanner IPs to it

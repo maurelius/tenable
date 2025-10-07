@@ -4,17 +4,14 @@
 ### Import Modules
 import logging
 from pprint import pprint
-from tenable.io import TenableIO
 from tqdm import tqdm
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
-# Define API keys
-accessKey = '1234'
-secretKey = '1234'
 # Bootstrap Tenable API connection
-io = TenableIO(access_key=accessKey, secret_key=secretKey)
+io = get_tenable_io_client()
 
 ### Let's move on
 # Start a loop to keep asking for input until everything is confirmed good

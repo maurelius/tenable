@@ -2,13 +2,9 @@
 
 ### Import Modules
 import tqdm
-from pprint import pprint
-from tenable.io import TenableIO
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
-# Define API keys
-accessKey = '1234'
-secretKey = '1234'
 # What folder are the scans in? [int]
 FOLDER_ID = 0
 # What policy/template do you want to attach?
@@ -19,7 +15,7 @@ EMAILS = 'emailAddress@example.com'
 kw = {"emails": EMAILS}
 
 # Bootstrap API connection
-io = TenableIO(access_key=accessKey, secret_key=secretKey)
+io = get_tenable_io_client()
 
 ### Loop through scans in folder and update using kw
 for each_scan in tqdm.tqdm(io.scans.list(folder_id=FOLDER_ID)):
