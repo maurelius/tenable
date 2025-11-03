@@ -6,16 +6,13 @@ import arrow
 import json
 import logging
 import tqdm
-from tenable.io import TenableIO
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
-# Define keys to auth to API
-accessKey = '1234'
-secretKey = '1234'
 # Bootstrap API connection
-io = TenableIO(access_key=accessKey, secret_key=secretKey)
+io = get_tenable_io_client()
 # Only use data from assets in the Default Network - Change if you need to
 NETWORK = 'Default'
 ### Define export parameters
@@ -25,9 +22,6 @@ TAGS = [('Category', 'NY Windows Servers')]
 VPR_SCORE = 8.5
 # Set timestamp for the last 24 hours
 D = int(arrow.now().shift(days=-1).timestamp())
-
-# Bootstrap API connection
-io = TenableIO(access_key=accessKey, secret_key=secretKey, vendor='John Doe', product='Export Vuln Data')
 
 ### Define functions to get stuff
 # Function for JSON serialization

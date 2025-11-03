@@ -3,18 +3,15 @@
 
 # Setup modules
 import re
-from tenable.io import TenableIO
 import logging
 from collections import defaultdict
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
-## Define API keys
-accessKey = '1234'
-secretKey = '1234'
 # Bootstrap Tenable API connection
-io = TenableIO(access_key=accessKey, secret_key=secretKey)
+io = get_tenable_io_client()
 
 # Retrieve vulnerability outputs for the specified plugin
 plugin_id = 19506  # Adjust as necessary

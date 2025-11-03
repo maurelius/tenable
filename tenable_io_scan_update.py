@@ -2,18 +2,14 @@
 
 ### Import Modules
 import tqdm
-from pprint import pprint
-from tenable.io import TenableIO
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
-# Define API keys
-accessKey = '1234'
-secretKey = '1234'
 # What folder are we looking in? [int]
 FOLDER_ID = 0
 
 # Bootstrap Tenable.io API connection
-io = TenableIO(access_key=accessKey, secret_key=secretKey)
+io = get_tenable_io_client()
 
 # This could also be written as (to return as a list).
 # def get_nw_uuid(NETWORK):

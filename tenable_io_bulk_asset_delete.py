@@ -2,17 +2,14 @@
 """The input CSV at a minimum should have the asset ID/uuid as a column"""
 """Reference pyTenable documentation: https://pytenable.readthedocs.io/en/stable/api/io/assets.html"""
 
-from tenable.io import TenableIO
 import logging
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
-# Define keys to auth to API
-accessKey = '1234'
-secretKey = '1234'
 # Bootstrap API connection
-io = TenableIO(access_key=accessKey, secret_key=secretKey)
+io = get_tenable_io_client()
 
 not_our_assets_csv = "./FilePath.csv"
 

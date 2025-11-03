@@ -5,17 +5,13 @@
 import json
 import logging
 import tqdm
-from pprint import pprint
-from tenable.io import TenableIO
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
-# Define keys to auth to API
-accessKey = '1234'
-secretKey = '1234'
 # Bootstrap API connection
-io = TenableIO(access_key=accessKey, secret_key=secretKey)
+io = get_tenable_io_client()
 
 ## Define Scan Parameters - Change variables to desired values
 # Input name for the scan
