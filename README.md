@@ -16,9 +16,9 @@ These scripts require Tenable.io API keys and, in some cases, a linking key to b
 
 ### Required Environment Variables
 
--   `TENABLE_ACCESS_KEY`: Your Tenable.io access key.
--   `TENABLE_SECRET_KEY`: Your Tenable.io secret key.
--   `TENABLE_LINKING_KEY`: The linking key for installing new sensors (only required for `install_linux_sensor.py`).
+- `TENABLE_ACCESS_KEY`: Your Tenable.io access key.
+- `TENABLE_SECRET_KEY`: Your Tenable.io secret key.
+- `TENABLE_LINKING_KEY`: The linking key for installing new sensors (only required for `install_linux_sensor.py`).
 
 You can set these environment variables in your shell profile (e.g., `~/.bashrc`, `~/.zshrc`) or export them in your current session:
 
