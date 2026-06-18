@@ -28,13 +28,15 @@ permissions = {
     }
 }
 
+# BOLT OPTIMIZATION: Batch credentials and permissions into a single API call per scan.
+# This reduces the number of API calls from N*(M+1) to N, where N is the number of scans
+# and M is the number of credentials.
+formatted_creds = [{'uuid': uuid} for uuid in CRED_UUIDS]
+
 # Iterate over the scans and update them
 for SCAN in MY_SCANS:
     SCAN_ID = SCAN['id']
-    # Update the scan with the new credentials using the UUIDs
-    for UUID in CRED_UUIDS:
-        io.scans.configure(SCAN_ID, credentials={'uuid': UUID})
-    # Update the scan with the new permissions    
-    io.scans.configure(SCAN_ID, acls=[permissions])
+    # BOLT OPTIMIZATION: Update the scan with all credentials and permissions in one call.
+    io.scans.configure(SCAN_ID, credentials=formatted_creds, acls=[permissions])
     
 print("Scans have been updated with the specified managed credentials and permissions.")
