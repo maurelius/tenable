@@ -1,4 +1,4 @@
-"""tenable_io_scan_update_permissions.py: Update scan permissions for every scan in a specified folder"""
+"""tenable_io_scan_update_permissions.py: Update scan permissions for every scan in a folder"""
 import logging
 from tenable_config import get_tenable_io_client
 
@@ -13,7 +13,8 @@ MY_SCANS = io.scans.list()
 CRED_LIST = io.credentials.list()
 required_types = ['SNMPv1/v2c', 'Windows', 'SSH', 'SNMPv3', 'Database']
 # Store the UUIDs of the managed credentials we want
-CRED_UUIDS = [CRED['uuid'] for CRED in CRED_LIST if 'MY-KEYWORD' in CRED['name'] and CRED['type'] in required_types]
+CRED_UUIDS = [CRED['uuid'] for CRED in CRED_LIST
+              if 'MY-KEYWORD' in CRED['name'] and CRED['type'] in required_types]
 
 # Define the permissions to be added
 permissions = {
@@ -28,13 +29,15 @@ permissions = {
     }
 }
 
+# Prepare the credentials list once to avoid redundant list comprehension in the loop
+CRED_DATA = [{'uuid': uuid} for uuid in CRED_UUIDS]
+
 # Iterate over the scans and update them
+# Optimization: Consolidate multiple io.scans.configure calls into one per scan.
+# This reduces the number of API calls from O(N * (M + 1)) to O(N).
 for SCAN in MY_SCANS:
     SCAN_ID = SCAN['id']
-    # Update the scan with the new credentials using the UUIDs
-    for UUID in CRED_UUIDS:
-        io.scans.configure(SCAN_ID, credentials={'uuid': UUID})
-    # Update the scan with the new permissions    
-    io.scans.configure(SCAN_ID, acls=[permissions])
-    
+    # Update the scan with the new credentials and permissions in a single call
+    io.scans.configure(SCAN_ID, credentials=CRED_DATA, acls=[permissions])
+
 print("Scans have been updated with the specified managed credentials and permissions.")
