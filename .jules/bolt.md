@@ -1,0 +1,3 @@
+## 2025-05-15 - Tenable.io pyTenable Performance Pattern
+**Learning:** The `io.scans.configure` method in pyTenable allows updating multiple settings (including `credentials` and `acls`) in a single call. Batching these updates reduces the total number of API requests from $O(N \times M)$ to $O(N)$, where $N$ is the number of scans and $M$ is the number of configuration items.
+**Action:** Always check if an API method supports batching or multiple parameters to minimize network round trips, especially when iterating over large datasets. Avoid unnecessary renaming or other side effects when performing bulk updates.
