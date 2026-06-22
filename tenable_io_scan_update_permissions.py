@@ -1,4 +1,4 @@
-"""tenable_io_scan_update_permissions.py: Update scan permissions for every scan in a specified folder"""
+"""tenable_io_scan_update_permissions.py: Update scan permissions for every scan in a folder"""
 import logging
 from tenable_config import get_tenable_io_client
 
@@ -13,28 +13,35 @@ MY_SCANS = io.scans.list()
 CRED_LIST = io.credentials.list()
 required_types = ['SNMPv1/v2c', 'Windows', 'SSH', 'SNMPv3', 'Database']
 # Store the UUIDs of the managed credentials we want
-CRED_UUIDS = [CRED['uuid'] for CRED in CRED_LIST if 'MY-KEYWORD' in CRED['name'] and CRED['type'] in required_types]
+CRED_UUIDS = [
+    CRED['uuid'] for CRED in CRED_LIST
+    if 'MY-KEYWORD' in CRED['name'] and CRED['type'] in required_types
+]
+
+# Optimization: Prepare a list of all credential dictionaries to update in bulk
+# This allows us to reduce network overhead from O(N*M) to O(N)
+CREDENTIALS_TO_BATCH = [{'uuid': uuid} for uuid in CRED_UUIDS]
 
 # Define the permissions to be added
-permissions = {
-    "settings": {
-        "name": "My Scan Name to Update",
-        "acls": [
-            {
-                "permissions": 16,
-                "name": "View Only"
-            }
-        ]
+# Optimization: Define ACLs as a list of objects as required by the API.
+permissions = [
+    {
+        "permissions": 16,
+        "name": "View Only"
     }
-}
+]
 
 # Iterate over the scans and update them
 for SCAN in MY_SCANS:
     SCAN_ID = SCAN['id']
-    # Update the scan with the new credentials using the UUIDs
-    for UUID in CRED_UUIDS:
-        io.scans.configure(SCAN_ID, credentials={'uuid': UUID})
-    # Update the scan with the new permissions    
-    io.scans.configure(SCAN_ID, acls=[permissions])
-    
+
+    # Optimization: Combine credential and ACL updates into a single call.
+    # pyTenable's io.scans.configure allows updating multiple settings at once,
+    # and accepts a list of credentials. This reduces total requests from (M+1)*N to N.
+    io.scans.configure(
+        SCAN_ID,
+        credentials=CREDENTIALS_TO_BATCH,
+        acls=permissions
+    )
+
 print("Scans have been updated with the specified managed credentials and permissions.")
