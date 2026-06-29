@@ -18,10 +18,22 @@ d = datetime.datetime(2023,1,1,19,00,00,00)
 io = get_tenable_io_client()
 
 ### Loop through scans in folder, configure and update the schedule
+# ⚡ BOLT Optimization: Move schedule configuration outside the loop.
+# This reduces O(N) redundant dictionary constructions to O(1) and fixes a TypeError
+# where each_scan['id'] was incorrectly passed as the 'enabled' parameter.
 # Use this for timezone reference: https://developer.tenable.com/reference/scans-timezones
+config_schedule = io.scans.configure_scan_schedule(
+    enabled=False,
+    frequency='ONETIME',
+    interval=2,
+    weekdays='SA',
+    day_of_month=4,
+    starttime=d,
+    timezone='America/Chicago'
+)
+
 for each_scan in tqdm.tqdm(io.scans.list(folder_id=FOLDER_ID)):
     try:
-        config_schedule = io.scans.configure_scan_schedule(each_scan['id'], enabled=False, frequency='ONETIME', interval=2, weekdays='SA', day_of_month=4, starttime=d, timezone='America/Chicago')
         io.scans.configure(each_scan['id'], schedule_scan=config_schedule)
     except Exception as ex:
         print(ex)
