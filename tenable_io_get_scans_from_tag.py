@@ -27,6 +27,7 @@ import json
 import os
 import logging
 import re
+from functools import lru_cache
 from restfly.errors import NotFoundError
 from tqdm import tqdm
 import time
@@ -38,6 +39,7 @@ io = TenableIO()
 scans = io.scans.list()
 
 # Helpers / Utilities
+@lru_cache(maxsize=128)
 def get_scan_details(scan_id):
     """Wrapper to get scan details with retry on 404 errors."""
     max_retries = 3
@@ -207,8 +209,6 @@ def get_tag_targets():
     )
     return kept
 
-tag_targets = get_tag_targets()
-
 # Resolve tag values & filters and emit rows carrying scan metadata
 def collect_tag_filters_and_value(io, tag_targets):
     """
@@ -229,8 +229,16 @@ def collect_tag_filters_and_value(io, tag_targets):
       ]
     """
     results = []
+    # ⚡ BOLT Optimization: Cache tag details to avoid redundant API calls for shared tags
+    tag_cache = {}
+
     # Correct 2-value unpack from dict.items()
-    for scan_id, meta in tag_targets.items():
+    for scan_id, meta in tqdm(
+        tag_targets.items(),
+        desc="Resolving tag filters",
+        bar_format="{l_bar}{bar} {n_fmt}/{total_fmt} [Elapsed: {elapsed} - Remaining: {remaining}, {rate_fmt}]",
+        ncols=100
+    ):
         if not isinstance(meta, dict):
             logging.error(f"Scan {scan_id}: unexpected tag_targets meta type {type(meta).__name__}; skipping.")
             continue
@@ -242,8 +250,14 @@ def collect_tag_filters_and_value(io, tag_targets):
         for raw_t in uuids:
             try:
                 t = normalize_tag_value_uuid(raw_t)
-                # Tenable.io API call: tag value details (contains 'value' and 'filters')
-                tags = io.tags.details(t)
+
+                if t in tag_cache:
+                    tags = tag_cache[t]
+                else:
+                    # Tenable.io API call: tag value details (contains 'value' and 'filters')
+                    tags = io.tags.details(t)
+                    tag_cache[t] = tags
+
                 tag_value = tags.get("value")
                 if not tag_value:
                     logging.info(f"No 'value' found for tag value UUID {t}. Skipping.")
@@ -277,11 +291,14 @@ def collect_tag_filters_and_value(io, tag_targets):
                 continue
     return results
 
-tag_filters_and_values = collect_tag_filters_and_value(io, tag_targets)
+if __name__ == "__main__":
+    tag_targets = get_tag_targets()
 
-# Output
-output_file = "tenable_io_tag_filters_and_values.json"
-with open(output_file, "w") as f:
-    json.dump(tag_filters_and_values, f, indent=4)
+    tag_filters_and_values = collect_tag_filters_and_value(io, tag_targets)
 
-print(f"Tag filters and values written to {output_file}")
+    # Output
+    output_file = "tenable_io_tag_filters_and_values.json"
+    with open(output_file, "w") as f:
+        json.dump(tag_filters_and_values, f, indent=4)
+
+    print(f"Tag filters and values written to {output_file}")
