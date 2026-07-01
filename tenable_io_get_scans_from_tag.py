@@ -229,6 +229,10 @@ def collect_tag_filters_and_value(io, tag_targets):
       ]
     """
     results = []
+    # ⚡ BOLT Optimization: Cache tag details to avoid redundant API calls for shared tags.
+    # This reduces network overhead from O(Total Tag References) to O(Unique Tags).
+    tag_cache = {}
+
     # Correct 2-value unpack from dict.items()
     for scan_id, meta in tag_targets.items():
         if not isinstance(meta, dict):
@@ -242,8 +246,15 @@ def collect_tag_filters_and_value(io, tag_targets):
         for raw_t in uuids:
             try:
                 t = normalize_tag_value_uuid(raw_t)
-                # Tenable.io API call: tag value details (contains 'value' and 'filters')
-                tags = io.tags.details(t)
+
+                # Check cache before making API call
+                if t in tag_cache:
+                    tags = tag_cache[t]
+                else:
+                    # Tenable.io API call: tag value details (contains 'value' and 'filters')
+                    tags = io.tags.details(t)
+                    tag_cache[t] = tags
+
                 tag_value = tags.get("value")
                 if not tag_value:
                     logging.info(f"No 'value' found for tag value UUID {t}. Skipping.")
