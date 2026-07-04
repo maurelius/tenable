@@ -3,13 +3,14 @@
 
 ### Import Modules
 import logging
-from tenable_config import get_tenable_io_client
+import os
+from tenable.io import TenableIO
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
 GROUP_NAME = input('Enter a name for the new agent group: ')
 # Bootstrap API connection
-io = get_tenable_io_client()
+io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
 # Create the agent group
 io.agent_groups.create(GROUP_NAME)

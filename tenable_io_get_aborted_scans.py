@@ -26,7 +26,7 @@ import logging
 # Note: The above imports assume you have pytenable installed and properly configured with your Tenable.io credentials.
 
 # Bootstrap Tenable.io client
-io = TenableIO()
+io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
 # Pull in all scans
 scans = io.scans.list()
 # Grab all scans that are aborted and enabled

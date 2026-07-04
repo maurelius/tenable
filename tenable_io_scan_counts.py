@@ -3,13 +3,14 @@
 ### Import Modules
 import logging
 import pandas as pd
-from tenable_config import get_tenable_io_client
+import os
+from tenable.io import TenableIO
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
 # Bootstrap API connection
-io = get_tenable_io_client()
+io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
 # Specify the email addresses of the scan owners
 emails = ['john.doe@example.com','richard.fitzenwell@example.com','jane.deer@example.com','stu.pedasso@example.com']
 # Specify the substring you want to search for in scan names

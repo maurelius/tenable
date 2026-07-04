@@ -3,13 +3,14 @@
 
 # Setup modules
 import logging
-from tenable_config import get_tenable_io_client
+import os
+from tenable.io import TenableIO
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
 # Bootstrap API connection
-io = get_tenable_io_client()
+io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
 
 # Define Excluded Domains
 ex_domains = ['.domain1.net', '.domain2.com', '.domain3.net']

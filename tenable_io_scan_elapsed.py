@@ -10,7 +10,8 @@
 from time import strftime, localtime
 import time
 import logging
-from tenable_config import get_tenable_io_client
+import os
+from tenable.io import TenableIO
 
 # Specify the scan ID for now instead of dynamically grabbing it
 scan_id = 0000
@@ -19,7 +20,7 @@ scan_id = 0000
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
 # Bootstrap API connection
-io = get_tenable_io_client()
+io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
 
 def check_scan_status(scan_id):
     try:

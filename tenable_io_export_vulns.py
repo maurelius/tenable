@@ -6,13 +6,14 @@ import arrow
 import json
 import logging
 import tqdm
-from tenable_config import get_tenable_io_client
+import os
+from tenable.io import TenableIO
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
 # Bootstrap API connection
-io = get_tenable_io_client()
+io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
 # Only use data from assets in the Default Network - Change if you need to
 NETWORK = 'Default'
 ### Define export parameters

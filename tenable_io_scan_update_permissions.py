@@ -1,12 +1,13 @@
 """tenable_io_scan_update_permissions.py: Update scan permissions for every scan in a specified folder"""
 import logging
-from tenable_config import get_tenable_io_client
+import os
+from tenable.io import TenableIO
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
 # Bootstrap API connection
-io = get_tenable_io_client()
+io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
 # Store all the scans
 MY_SCANS = io.scans.list()
 # Store list of managed credentials
@@ -28,15 +29,13 @@ permissions = {
     }
 }
 
-# BOLT OPTIMIZATION: Batch credentials and permissions into a single API call per scan.
-# This reduces the number of API calls from N*(M+1) to N, where N is the number of scans
-# and M is the number of credentials.
-formatted_creds = [{'uuid': uuid} for uuid in CRED_UUIDS]
-
 # Iterate over the scans and update them
 for SCAN in MY_SCANS:
     SCAN_ID = SCAN['id']
-    # BOLT OPTIMIZATION: Update the scan with all credentials and permissions in one call.
-    io.scans.configure(SCAN_ID, credentials=formatted_creds, acls=[permissions])
+    # Update the scan with the new credentials using the UUIDs
+    for UUID in CRED_UUIDS:
+        io.scans.configure(SCAN_ID, credentials={'uuid': UUID})
+    # Update the scan with the new permissions
+    io.scans.configure(SCAN_ID, acls=[permissions])
     
 print("Scans have been updated with the specified managed credentials and permissions.")
