@@ -22,9 +22,8 @@ Requires:
 Outputs:
     - JSON file with details of scan tag targets, including scan ID, scan name, scanner name, tag value UUID, display value, and parsed asset filters.
 '''
-from tenable.io import TenableIO
+from tenable_config import get_tenable_io_client
 import json
-import os
 import logging
 import re
 from restfly.errors import NotFoundError
@@ -34,7 +33,7 @@ import time
 # Note: The above imports assume you have pytenable installed and properly configured with your Tenable.io credentials.
 
 # Bootstrap Tenable.io client
-io = TenableIO()
+io = get_tenable_io_client()
 scans = io.scans.list()
 
 # Helpers / Utilities
@@ -47,10 +46,10 @@ def get_scan_details(scan_id):
             return io.scans.details(scan_id=scan_id)
         except NotFoundError:
             if attempt < max_retries - 1:
-                logging.warning(f"Scan ID {scan_id} not found. Retrying in {delay_seconds} seconds...")
+                logging.warning("Scan ID %s not found. Retrying in %s seconds...", scan_id, delay_seconds)
                 time.sleep(delay_seconds)
             else:
-                logging.error(f"Scan ID {scan_id} not found after {max_retries} attempts.")
+                logging.error("Scan ID %s not found after %s attempts.", scan_id, max_retries)
                 raise
 
 # Correct UUID pattern (Tenable returns lowercase hex by default)
@@ -102,24 +101,24 @@ def normalize_tag_value_uuid(raw):
 def parse_asset_filters(filters, tag_id):
     """Return a list of AND filters from filters['asset'], handling JSON string or dict."""
     if not filters or 'asset' not in filters:
-        logging.info(f"No asset filters found for tag {tag_id}. Skipping.")
+        logging.info("No asset filters found for tag %s. Skipping.", tag_id)
         return None
     asset = filters['asset']
     if isinstance(asset, str):
         try:
             asset_data = json.loads(asset)
         except json.JSONDecodeError as e:
-            logging.warning(f"Invalid JSON in filters['asset'] for tag {tag_id}: {e}")
+            logging.warning("Invalid JSON in filters['asset'] for tag %s: %s", tag_id, e)
             return None
     elif isinstance(asset, dict):
         asset_data = asset
     else:
-        logging.warning(f"Unexpected type for filters['asset'] in tag {tag_id}: {type(asset).__name__}")
+        logging.warning("Unexpected type for filters['asset'] in tag %s: %s", tag_id, type(asset).__name__)
         return None
 
     filter_list = asset_data.get('and', [])
     if not filter_list:
-        logging.info(f"No 'and' filters found for tag {tag_id}. Skipping.")
+        logging.info("No 'and' filters found for tag %s. Skipping.", tag_id)
         return None
     return filter_list
 
@@ -160,7 +159,7 @@ def get_tag_targets():
 
         # Guard against None or unexpected responses
         if not isinstance(scan_details, dict):
-            logging.error(f"Scan {scan_id}: details payload is None or not a dict; skipping.")
+            logging.error("Scan %s: details payload is None or not a dict; skipping.", scan_id)
             continue
 
         # SAFE accessors from here on
@@ -189,7 +188,7 @@ def get_tag_targets():
                 normalized.append(u)
             else:
                 dropped_items_invalid += 1
-                logging.debug(f"Scan {scan_id}: dropping malformed tag target {x!r}")
+                logging.debug("Scan %s: dropping malformed tag target %r", scan_id, x)
 
         if not normalized:
             dropped_all_invalid += 1
@@ -210,9 +209,9 @@ def get_tag_targets():
 tag_targets = get_tag_targets()
 
 # Resolve tag values & filters and emit rows carrying scan metadata
-def collect_tag_filters_and_value(io, tag_targets):
+def collect_tag_filters_and_value(io_client, target_map):
     """
-    Iterate tag_targets and collect parsed asset filters AND the tag 'value' (singular)
+    Iterate target_map and collect parsed asset filters AND the tag 'value' (singular)
     for each tag value UUID.
 
     Returns a flat list of dicts, each row carrying scan metadata:
@@ -229,10 +228,21 @@ def collect_tag_filters_and_value(io, tag_targets):
       ]
     """
     results = []
+    # ⚡ BOLT Optimization: Use a cache to avoid redundant API calls for shared tags.
+    # This reduces network overhead from O(Total Tag References) to O(Unique Tags).
+    tag_cache = {}
+    cache_hits = 0
+    cache_misses = 0
+
     # Correct 2-value unpack from dict.items()
-    for scan_id, meta in tag_targets.items():
+    for scan_id, meta in tqdm(
+        target_map.items(),
+        desc="Resolving tags",
+        bar_format="{l_bar}{bar} {n_fmt}/{total_fmt} [Elapsed: {elapsed} - Remaining: {remaining}, {rate_fmt}]",
+        ncols=100
+    ):
         if not isinstance(meta, dict):
-            logging.error(f"Scan {scan_id}: unexpected tag_targets meta type {type(meta).__name__}; skipping.")
+            logging.error("Scan %s: unexpected target_map meta type %s; skipping.", scan_id, type(meta).__name__)
             continue
 
         uuids = meta.get("uuids") or []
@@ -242,11 +252,19 @@ def collect_tag_filters_and_value(io, tag_targets):
         for raw_t in uuids:
             try:
                 t = normalize_tag_value_uuid(raw_t)
-                # Tenable.io API call: tag value details (contains 'value' and 'filters')
-                tags = io.tags.details(t)
+
+                if t in tag_cache:
+                    cache_hits += 1
+                    tags = tag_cache[t]
+                else:
+                    cache_misses += 1
+                    # Tenable.io API call: tag value details (contains 'value' and 'filters')
+                    tags = io_client.tags.details(t)
+                    tag_cache[t] = tags
+
                 tag_value = tags.get("value")
                 if not tag_value:
-                    logging.info(f"No 'value' found for tag value UUID {t}. Skipping.")
+                    logging.info("No 'value' found for tag value UUID %s. Skipping.", t)
                     continue
 
                 filters = tags.get("filters")
@@ -266,22 +284,25 @@ def collect_tag_filters_and_value(io, tag_targets):
 
             except ValueError as ve:
                 # Covers nested list shapes and regex mismatches
-                logging.error(f"Error processing tag {raw_t!r}: {ve}")
+                logging.error("Error processing tag %r: %s", raw_t, ve)
                 continue
             except NotFoundError as nf:
                 # Tag value UUID not found (deleted/permissions)
-                logging.error(f"Error processing tag {raw_t}: {nf}")
+                logging.error("Error processing tag %s: %s", raw_t, nf)
                 continue
-            except Exception as e:
-                logging.error(f"Unexpected error processing tag {raw_t!r}: {e}")
+            except Exception as e: # pylint: disable=broad-exception-caught
+                logging.error("Unexpected error processing tag %r: %s", raw_t, e)
                 continue
+
+    logging.info("Tag resolution stats: Cache Hits: %s, Cache Misses: %s", cache_hits, cache_misses)
+    print(f"\nTag resolution stats: Cache Hits: {cache_hits}, Cache Misses: {cache_misses}")
     return results
 
 tag_filters_and_values = collect_tag_filters_and_value(io, tag_targets)
 
 # Output
 output_file = "tenable_io_tag_filters_and_values.json"
-with open(output_file, "w") as f:
+with open(output_file, "w", encoding="utf-8") as f:
     json.dump(tag_filters_and_values, f, indent=4)
 
 print(f"Tag filters and values written to {output_file}")
