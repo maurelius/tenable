@@ -8,3 +8,7 @@
 ## 2026-07-04 - Caching Redundant API Lookups
 **Learning:** In scripts that resolve scan-related resources (like tags), many scans frequently share the same resource references. Implementing a dictionary-based cache for these resources reduces API overhead from O(Total References) to O(Unique Resources), significantly improving execution time in large environments.
 **Action:** Implement a cache for nested API lookups when processing lists of items that likely share common configuration elements.
+
+## 2026-07-05 - Bulk Asset Export for Tag Retrieval
+**Learning:** Sequential `io.assets.tags()` calls for every asset retrieved via `io.assets.list()` creates an O(N) network bottleneck. Replacing this with `io.exports.assets()` reduces overhead to O(1) export job, as the Export API includes tags in the asset record payload.
+**Action:** Use bulk Export APIs instead of sequential lookup methods whenever processing attributes (like tags) across a large set of assets.
