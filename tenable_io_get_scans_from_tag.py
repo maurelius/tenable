@@ -296,6 +296,9 @@ def collect_tag_filters_and_value(tio_client, targets_map):
             except Exception as e: # pylint: disable=broad-exception-caught
                 logging.error("Unexpected error processing tag %r: %s", raw_t, e)
                 continue
+
+    logging.info("Tag resolution stats: Cache Hits: %s, Cache Misses: %s", cache_hits, cache_misses)
+    print(f"\nTag resolution stats: Cache Hits: {cache_hits}, Cache Misses: {cache_misses}")
     return results
 
 def main():
