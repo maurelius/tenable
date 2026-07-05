@@ -1,3 +1,3 @@
-## 2025-05-15 - [Tag Detail Caching]
-**Learning:** Scans in Tenable.io often share the same tag targets. By implementing a local cache for `io.tags.details(t)`, we can avoid redundant API calls.
-**Action:** In scripts that iterate through multiple scans and process their tags, always implement a cache for tag metadata to reduce network overhead and stay within API rate limits.
+## 2025-05-15 - [Batching Scan Configuration Updates]
+**Learning:** The `io.scans.configure` method in pyTenable allows updating multiple settings, including `credentials` and `acls`, in a single API call.
+**Action:** When updating multiple attributes of a scan, consolidate them into a single `io.scans.configure` call to minimize network requests and improve performance.

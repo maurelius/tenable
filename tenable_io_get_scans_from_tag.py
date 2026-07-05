@@ -34,7 +34,7 @@ import time
 # Note: The above imports assume you have pytenable installed and properly configured with your Tenable.io credentials.
 
 # Bootstrap Tenable.io client
-io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
+io = TenableIO()
 scans = io.scans.list()
 
 # Helpers / Utilities

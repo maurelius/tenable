@@ -26,16 +26,12 @@ from uuid import UUID
 
 # Note: The above imports assume you have pytenable installed and properly configured with your Tenable.io credentials.
 
-io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
+io = TenableIO()
 scans = io.scans.list()
 # --- Create a dictionary for efficient lookup of scan names ---
 scan_name_map = {s['id']: s['name'] for s in scans}
 
 # --- Processing Logic (Fixed) ---
-# BOLT OPTIMIZATION: Implement a cache for tag details to avoid redundant API calls.
-# Scans often share the same tag targets; caching reduces O(N*M) calls to O(Unique Tags).
-tag_cache = {}
-
 # Initialize an empty list to store the data for the DataFrame
 all_extracted_data = []
 
@@ -55,13 +51,7 @@ for scan in scans:
         
         for t in tag_targets:
             try:
-                # Use cached tag details if available
-                if t in tag_cache:
-                    tags = tag_cache[t]
-                else:
-                    tags = io.tags.details(t)
-                    tag_cache[t] = tags
-
+                tags = io.tags.details(t)
                 filter_dict = tags.get("filters")
                 
                 if not filter_dict or 'asset' not in filter_dict:

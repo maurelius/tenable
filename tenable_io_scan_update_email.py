@@ -2,8 +2,7 @@
 
 ### Import Modules
 import tqdm
-import os
-from tenable.io import TenableIO
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
 # What folder are the scans in? [int]
@@ -16,7 +15,7 @@ EMAILS = 'emailAddress@example.com'
 kw = {"emails": EMAILS}
 
 # Bootstrap API connection
-io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
+io = get_tenable_io_client()
 
 ### Loop through scans in folder and update using kw
 for each_scan in tqdm.tqdm(io.scans.list(folder_id=FOLDER_ID)):

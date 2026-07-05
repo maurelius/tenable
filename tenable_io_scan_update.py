@@ -2,15 +2,14 @@
 
 ### Import Modules
 import tqdm
-import os
-from tenable.io import TenableIO
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
 # What folder are we looking in? [int]
 FOLDER_ID = 0
 
 # Bootstrap Tenable.io API connection
-io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
+io = get_tenable_io_client()
 
 # This could also be written as (to return as a list).
 # def get_nw_uuid(NETWORK):

@@ -4,14 +4,13 @@
 ### Import Modules
 import logging
 from tenable.errors import BadRequestError
-import os
-from tenable.io import TenableIO
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
 # Bootstrap Tenable API connection
-io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
+io = get_tenable_io_client()
 # Get a list of current scans
 SCANS = io.scans.list()
 # Define the word in the scan name so you can get all of those scans

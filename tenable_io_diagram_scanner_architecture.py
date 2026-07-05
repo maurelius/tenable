@@ -38,7 +38,7 @@ import html
 # ---------------------------
 # Tenable.io client
 # ---------------------------
-io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
+io = TenableIO()
 scans = io.scans.list()
 
 # ---------------------------

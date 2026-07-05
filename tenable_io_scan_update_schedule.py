@@ -4,8 +4,7 @@
 ### Import Modules
 import tqdm
 import datetime
-import os
-from tenable.io import TenableIO
+from tenable_config import get_tenable_io_client
 
 ### Define some Variables
 # What folder are the scans in? [int]
@@ -16,7 +15,7 @@ FOLDER_ID = 0000
 d = datetime.datetime(2023,1,1,19,00,00,00)
 
 # Bootstrap API connection
-io = TenableIO(os.getenv('TENABLE_ACCESS_KEY'), os.getenv('TENABLE_SECRET_KEY'))
+io = get_tenable_io_client()
 
 ### Loop through scans in folder, configure and update the schedule
 # Use this for timezone reference: https://developer.tenable.com/reference/scans-timezones
