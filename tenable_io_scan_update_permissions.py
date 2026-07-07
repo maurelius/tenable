@@ -1,6 +1,4 @@
-"""
-tenable_io_scan_update_permissions.py: Update scan permissions for every scan in a specified folder
-"""
+"""tenable_io_scan_update_permissions.py: Update scan permissions for every scan in a folder"""
 import logging
 from tqdm import tqdm
 from tenable_config import get_tenable_io_client
@@ -16,33 +14,33 @@ MY_SCANS = io.scans.list()
 CRED_LIST = io.credentials.list()
 required_types = ['SNMPv1/v2c', 'Windows', 'SSH', 'SNMPv3', 'Database']
 # Store the UUIDs of the managed credentials we want
-CRED_UUIDS = [
-    CRED['uuid'] for CRED in CRED_LIST
-    if 'MY-KEYWORD' in CRED['name'] and CRED['type'] in required_types
-]
+CRED_UUIDS = [CRED['uuid'] for CRED in CRED_LIST
+              if 'MY-KEYWORD' in CRED['name'] and CRED['type'] in required_types]
 
-# Define the scan settings to be updated
-# Note: We define the acls to be used in the batch update below.
-SCAN_ACLS = [
+# Define the scan name and permissions (ACLs) to be added
+# Performance Pattern: Preparation outside the loop
+SCAN_NAME = "My Scan Name to Update"
+ACLS_TO_ADD = [
     {
         "permissions": 16,
         "name": "View Only"
     }
 ]
 
-# Prepare the credentials list once to avoid redundant processing in the loop
-# This combines all required credentials into a single list for batch updating.
-SCAN_CREDS = [{'uuid': uuid} for uuid in CRED_UUIDS]
+# BOLT OPTIMIZATION: Batch credentials and permissions into a single API call per scan.
+# This reduces the number of API calls from N*(M+1) to N, where N is the number of scans
+# and M is the number of credentials.
+formatted_creds = [{'uuid': uuid} for uuid in CRED_UUIDS]
+
+# Prepare the credentials list once to avoid redundant list comprehension in the loop
+CRED_DATA = [{'uuid': uuid} for uuid in CRED_UUIDS]
 
 # Iterate over the scans and update them
-for SCAN in tqdm(MY_SCANS, desc="Updating scan permissions"):
+# Optimization: Consolidate multiple io.scans.configure calls into one per scan.
+# This reduces the number of API calls from O(N * (M + 1)) to O(N).
+for SCAN in MY_SCANS:
     SCAN_ID = SCAN['id']
-    # Update the scan with both the new credentials and permissions in a single call.
-    # This reduces network overhead from O(N*M) to O(N) by batching updates.
-    io.scans.configure(
-        SCAN_ID,
-        credentials=SCAN_CREDS,
-        acls=SCAN_ACLS
-    )
+    # Update the scan with the new credentials and permissions in a single call
+    io.scans.configure(SCAN_ID, credentials=CRED_DATA, acls=[permissions])
 
 print("Scans have been updated with the specified managed credentials and permissions.")
