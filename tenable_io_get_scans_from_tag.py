@@ -51,9 +51,7 @@ def get_scan_details(tio_client, scan_id):
                 logging.error("Scan ID %s not found after %d attempts.",
                               scan_id, max_retries)
                 raise
-
-# Correct UUID pattern (Tenable returns lowercase hex by default)
-UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+    return None
 
 def _normalize_uuid_like(x):
     """
@@ -212,7 +210,7 @@ def get_tag_targets(scans_list, tio_client):
 # Resolve tag values & filters and emit rows carrying scan metadata
 def collect_tag_filters_and_value(tio_client, target_map):
     """
-    Iterate tag_targets and collect parsed asset filters AND the tag 'value' (singular)
+    Iterate targets_map and collect parsed asset filters AND the tag 'value' (singular)
     for each tag value UUID.
 
     Returns a flat list of dicts, each row carrying scan metadata:
@@ -257,10 +255,29 @@ def collect_tag_filters_and_value(tio_client, target_map):
                     logging.info("No 'value' found for tag value UUID %s. Skipping.", t)
                     continue
 
-                filters = tags.get("filters")
-                filter_list = parse_asset_filters(filters, t)
-                if not filter_list:
-                    # parse_asset_filters already logged why
+                if t not in tag_cache:
+                    # Tenable.io API call: tag value details (contains 'value' and 'filters')
+                    tags = tio_client.tags.details(t)
+                    tag_value = tags.get("value")
+                    if not tag_value:
+                        logging.info("No 'value' found for tag value UUID %s. Skipping.", t)
+                        tag_cache[t] = None
+                        continue
+
+                    filters = tags.get("filters")
+                    filter_list = parse_asset_filters(filters, t)
+                    if not filter_list:
+                        # parse_asset_filters already logged why
+                        tag_cache[t] = None
+                        continue
+
+                    tag_cache[t] = {
+                        "value": tag_value,
+                        "filters": filter_list
+                    }
+
+                cached_tag = tag_cache[t]
+                if cached_tag is None:
                     continue
 
                 results.append({
@@ -268,8 +285,8 @@ def collect_tag_filters_and_value(tio_client, target_map):
                     "scan_name": scan_name,
                     "scanner_uuid": scanner_name,
                     "tag_value_uuid": t,
-                    "value": tag_value,
-                    "filters": filter_list
+                    "value": cached_tag["value"],
+                    "filters": cached_tag["filters"]
                 })
 
             except ValueError as ve:
@@ -283,6 +300,9 @@ def collect_tag_filters_and_value(tio_client, target_map):
             except Exception as e: # pylint: disable=broad-except
                 logging.error("Unexpected error processing tag %r: %s", raw_t, e)
                 continue
+
+    logging.info("Tag resolution stats: Cache Hits: %s, Cache Misses: %s", cache_hits, cache_misses)
+    print(f"\nTag resolution stats: Cache Hits: {cache_hits}, Cache Misses: {cache_misses}")
     return results
 
 if __name__ == "__main__":
