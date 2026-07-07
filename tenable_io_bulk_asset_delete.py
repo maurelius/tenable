@@ -2,6 +2,7 @@
 """The input CSV at a minimum should have the asset ID/uuid as a column"""
 """Reference pyTenable documentation: https://pytenable.readthedocs.io/en/stable/api/io/assets.html"""
 
+import csv
 import logging
 from tenable_config import get_tenable_io_client
 
@@ -11,11 +12,26 @@ logging.basicConfig(level=logging.WARNING)
 # Bootstrap API connection
 io = get_tenable_io_client()
 
-not_our_assets_csv = "./FilePath.csv"
+NOT_OUR_ASSETS_CSV = "./FilePath.csv"
 
-for index, row in not_our_assets_csv.iterrows():
-     print(f"Deleting Asset ID: {row['id']} - Host Name: {row['host_name']}")
-     try:
-         io.assets.delete(uuid=str(row['id']))
-     except Exception as ex:
-         print(ex)
+asset_ids = []
+try:
+    with open(NOT_OUR_ASSETS_CSV, mode='r', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            if 'id' in row:
+                asset_ids.append(row['id'])
+
+    if asset_ids:
+        print(f"Attempting to bulk delete {len(asset_ids)} assets...")
+        # ⚡ BOLT Optimization: Use bulk_delete with filters to reduce API calls from O(N) to O(1).
+        # In pyTenable 1.4.13, bulk_delete handles multiple IDs via filter criteria.
+        io.assets.bulk_delete(('id', 'eq', asset_ids))
+        print("Bulk delete operation requested successfully.")
+    else:
+        print("No asset IDs found to delete.")
+
+except FileNotFoundError:
+    logging.error("CSV file not found: %s", NOT_OUR_ASSETS_CSV)
+except Exception as e:
+    logging.error("An error occurred during bulk deletion: %s", e)
