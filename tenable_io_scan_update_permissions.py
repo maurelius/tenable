@@ -1,5 +1,6 @@
 """tenable_io_scan_update_permissions.py: Update scan permissions for every scan in a folder"""
 import logging
+from tqdm import tqdm
 from tenable_config import get_tenable_io_client
 
 ### Define some Variables
@@ -11,37 +12,35 @@ io = get_tenable_io_client()
 MY_SCANS = io.scans.list()
 # Store list of managed credentials
 CRED_LIST = io.credentials.list()
-required_types = ['SNMPv1/v2c', 'Windows', 'SSH', 'SNMPv3', 'Database']
+REQUIRED_TYPES = ['SNMPv1/v2c', 'Windows', 'SSH', 'SNMPv3', 'Database']
 # Store the UUIDs of the managed credentials we want
-CRED_UUIDS = [
-    CRED['uuid'] for CRED in CRED_LIST
-    if 'MY-KEYWORD' in CRED['name'] and CRED['type'] in required_types
-]
+CRED_UUIDS = [CRED['uuid'] for CRED in CRED_LIST
+              if 'MY-KEYWORD' in CRED['name'] and CRED['type'] in required_types]
 
-# Optimization: Prepare a list of all credential dictionaries to update in bulk
-# This allows us to reduce network overhead from O(N*M) to O(N)
-CREDENTIALS_TO_BATCH = [{'uuid': uuid} for uuid in CRED_UUIDS]
-
-# Define the permissions to be added
-# Optimization: Define ACLs as a list of objects as required by the API.
-permissions = [
+# Define the scan name and permissions (ACLs) to be added
+# Performance Pattern: Preparation outside the loop
+SCAN_NAME = "My Scan Name to Update"
+ACLS_TO_ADD = [
     {
         "permissions": 16,
         "name": "View Only"
     }
 ]
 
+# BOLT OPTIMIZATION: Batch credentials and permissions into a single API call per scan.
+# This reduces the number of API calls from N*(M+1) to N, where N is the number of scans
+# and M is the number of credentials.
+formatted_creds = [{'uuid': uuid} for uuid in CRED_UUIDS]
+
+# Prepare the credentials list once to avoid redundant list comprehension in the loop
+CRED_DATA = [{'uuid': uuid} for uuid in CRED_UUIDS]
+
 # Iterate over the scans and update them
+# Optimization: Consolidate multiple io.scans.configure calls into one per scan.
+# This reduces the number of API calls from O(N * (M + 1)) to O(N).
 for SCAN in MY_SCANS:
     SCAN_ID = SCAN['id']
-
-    # Optimization: Combine credential and ACL updates into a single call.
-    # pyTenable's io.scans.configure allows updating multiple settings at once,
-    # and accepts a list of credentials. This reduces total requests from (M+1)*N to N.
-    io.scans.configure(
-        SCAN_ID,
-        credentials=CREDENTIALS_TO_BATCH,
-        acls=permissions
-    )
+    # Update the scan with the new credentials and permissions in a single call
+    io.scans.configure(SCAN_ID, credentials=CRED_DATA, acls=[permissions])
 
 print("Scans have been updated with the specified managed credentials and permissions.")
