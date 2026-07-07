@@ -8,3 +8,7 @@
 ## 2026-07-04 - Caching Redundant API Lookups
 **Learning:** In scripts that resolve scan-related resources (like tags), many scans frequently share the same resource references. Implementing a dictionary-based cache for these resources reduces API overhead from O(Total References) to O(Unique Resources), significantly improving execution time in large environments.
 **Action:** Implement a cache for nested API lookups when processing lists of items that likely share common configuration elements.
+
+## 2026-07-07 - Efficient Collection Accumulation
+**Learning:** Accumulating data into a list and repeatedly performing deduplication (e.g., `list(set(accumulated_list))`) inside a loop creates an $O(N^2)$ performance bottleneck. Using a `set` with `.add()` or `.update()` inside the loop and converting to a list once after the loop ensures $O(N)$ complexity.
+**Action:** Use sets for deduplicated accumulation in loops and defer list conversion/sorting until the collection is complete.
