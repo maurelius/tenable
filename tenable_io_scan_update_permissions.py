@@ -12,7 +12,7 @@ io = get_tenable_io_client()
 MY_SCANS = io.scans.list()
 # Store list of managed credentials
 CRED_LIST = io.credentials.list()
-required_types = ['SNMPv1/v2c', 'Windows', 'SSH', 'SNMPv3', 'Database']
+REQUIRED_TYPES = ['SNMPv1/v2c', 'Windows', 'SSH', 'SNMPv3', 'Database']
 # Store the UUIDs of the managed credentials we want
 CRED_UUIDS = [CRED['uuid'] for CRED in CRED_LIST
               if 'MY-KEYWORD' in CRED['name'] and CRED['type'] in required_types]
