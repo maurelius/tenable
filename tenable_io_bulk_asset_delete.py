@@ -7,9 +7,10 @@ import logging
 import csv
 from tenable_config import get_tenable_io_client
 
-### Define some Variables
 # Set up logging
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.INFO)
+LOGGER = logging.getLogger(__name__)
+
 # Bootstrap API connection
 io = get_tenable_io_client()
 
