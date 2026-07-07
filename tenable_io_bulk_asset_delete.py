@@ -1,9 +1,10 @@
 """tenable_io_bulk_asset_delete.py: Deletes assets listed in an exported CSV"""
-"""The input CSV at a minimum should have the asset ID/uuid as a column"""
+"""The input CSV at a minimum should have the asset ID/uuid as a column named 'id'"""
 """Reference pyTenable documentation: https://pytenable.readthedocs.io/en/stable/api/io/assets.html"""
 
 import csv
 import logging
+import csv
 from tenable_config import get_tenable_io_client
 
 ### Define some Variables
