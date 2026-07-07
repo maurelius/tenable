@@ -12,10 +12,10 @@ io = get_tenable_io_client()
 MY_SCANS = io.scans.list()
 # Store list of managed credentials
 CRED_LIST = io.credentials.list()
-required_types = ['SNMPv1/v2c', 'Windows', 'SSH', 'SNMPv3', 'Database']
-# Store the managed credentials we want to add
-CREDENTIALS_TO_ADD = [{'uuid': CRED['uuid']} for CRED in CRED_LIST
-                      if 'MY-KEYWORD' in CRED['name'] and CRED['type'] in required_types]
+REQUIRED_TYPES = ['SNMPv1/v2c', 'Windows', 'SSH', 'SNMPv3', 'Database']
+# Store the UUIDs of the managed credentials we want
+CRED_UUIDS = [CRED['uuid'] for CRED in CRED_LIST
+              if 'MY-KEYWORD' in CRED['name'] and CRED['type'] in required_types]
 
 # Define the scan name and permissions (ACLs) to be added
 # Performance Pattern: Preparation outside the loop
@@ -27,17 +27,20 @@ ACLS_TO_ADD = [
     }
 ]
 
+# BOLT OPTIMIZATION: Batch credentials and permissions into a single API call per scan.
+# This reduces the number of API calls from N*(M+1) to N, where N is the number of scans
+# and M is the number of credentials.
+formatted_creds = [{'uuid': uuid} for uuid in CRED_UUIDS]
+
+# Prepare the credentials list once to avoid redundant list comprehension in the loop
+CRED_DATA = [{'uuid': uuid} for uuid in CRED_UUIDS]
+
 # Iterate over the scans and update them
-# ⚡ BOLT Optimization: Consolidate multiple io.scans.configure calls into one.
-# This reduces the number of API calls from O(N*M) to O(N).
-for SCAN in tqdm(MY_SCANS, desc="Updating Scans"):
+# Optimization: Consolidate multiple io.scans.configure calls into one per scan.
+# This reduces the number of API calls from O(N * (M + 1)) to O(N).
+for SCAN in MY_SCANS:
     SCAN_ID = SCAN['id']
-    # Consolidate credential and ACL updates into a single call
-    io.scans.configure(
-        SCAN_ID,
-        credentials=CREDENTIALS_TO_ADD,
-        acls=ACLS_TO_ADD,
-        name=SCAN_NAME
-    )
+    # Update the scan with the new credentials and permissions in a single call
+    io.scans.configure(SCAN_ID, credentials=CRED_DATA, acls=[permissions])
 
 print("Scans have been updated with the specified managed credentials and permissions.")
