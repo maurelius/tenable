@@ -228,7 +228,8 @@ def collect_tag_filters_and_value(tio_client, targets_map):
       ]
     """
     results = []
-    # ⚡ BOLT Optimization: Cache tag details to avoid redundant API calls for shared tags
+    # ⚡ BOLT Optimization: Cache tag details to avoid redundant API calls for shared tags.
+    # This reduces network overhead from O(Total Tag References) to O(Unique Tags).
     tag_cache = {}
 
     # Correct 2-value unpack from dict.items()
@@ -251,6 +252,7 @@ def collect_tag_filters_and_value(tio_client, targets_map):
             try:
                 t = normalize_tag_value_uuid(raw_t)
 
+                # Check cache before making API call
                 if t in tag_cache:
                     tags = tag_cache[t]
                 else:
