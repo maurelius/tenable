@@ -1,60 +1,55 @@
-"""tenable_io_bulk_asset_delete.py: Deletes assets listed in an exported CSV"""
-"""The input CSV at a minimum should have the asset ID/uuid as a column"""
-"""Reference pyTenable documentation: https://pytenable.readthedocs.io/en/stable/api/io/assets.html"""
+"""
+tenable_io_bulk_asset_delete.py: Deletes assets listed in an exported CSV.
+The input CSV at a minimum should have the asset ID/uuid as a column.
+Reference pyTenable documentation: https://pytenable.readthedocs.io/en/stable/api/io/assets.html
+"""
 
+import csv
 import logging
 import csv
-from tqdm import tqdm
 from tenable_config import get_tenable_io_client
 
-### Define some Variables
 # Set up logging
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.INFO)
+LOGGER = logging.getLogger(__name__)
 
-CSV_FILE = "./FilePath.csv"
-
-def bulk_delete_assets(csv_file, io_client=None):
+def bulk_delete_assets_from_csv(io_client, csv_path):
     """
-    ⚡ BOLT Optimization: Batching asset deletions reduces API calls from O(N) to O(1).
-    This implementation uses io.assets.bulk_delete() with 'or' filters to group
-    individual deletions into a single network request.
-
-    Impact: Reduces network overhead by up to 100x per request.
+    Reads asset IDs from a CSV and deletes them in bulk.
     """
-    if io_client is None:
-        io_client = get_tenable_io_client()
-
-    asset_ids = []
+    # ⚡ BOLT Optimization: Use io.assets.bulk_delete to minimize API calls.
+    # This reduces the number of API calls from O(N) to O(1) for a batch of assets.
+    # By batching deletions, we significantly reduce network overhead and API rate limiting risk.
     try:
-        with open(csv_file, mode='r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
+        asset_ids = []
+        with open(csv_path, mode='r', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
             for row in reader:
-                if 'id' in row:
+                if row.get('id'):
                     asset_ids.append(row['id'])
-    except FileNotFoundError:
-        logging.error("File %s not found.", csv_file)
-        return
-    except Exception as ex:
-        logging.error("Error reading CSV: %s", ex)
-        return
 
-    if not asset_ids:
-        print("No assets found to delete.")
-        return
-
-    print(f"Starting bulk deletion of {len(asset_ids)} assets...")
-
-    # pyTenable bulk_delete allows multiple filters with filter_type='or'
-    # We batch them to stay within reasonable request limits and provide progress feedback
-    BATCH_SIZE = 100
-    for i in tqdm(range(0, len(asset_ids), BATCH_SIZE), desc="Deleting Batches"):
-        batch = asset_ids[i:i + BATCH_SIZE]
-        filters = [('id', 'eq', uuid) for uuid in batch]
-        try:
-            # Consolidate up to 100 deletions into one API call
+        if asset_ids:
+            LOGGER.info("Deleting %d assets in bulk...", len(asset_ids))
+            # Construct filters for bulk_delete. We use 'or' to match any of the IDs.
+            filters = [('id', 'eq', asset_id) for asset_id in asset_ids]
             io_client.assets.bulk_delete(*filters, filter_type='or')
-        except Exception as ex:
-            logging.error("Error deleting batch starting at index %d: %s", i, ex)
+            LOGGER.info("Bulk delete operation completed.")
+            return True
 
-if __name__ == '__main__':
-    bulk_delete_assets(CSV_FILE)
+        LOGGER.warning("No asset IDs found in CSV.")
+        return False
+
+    except FileNotFoundError:
+        LOGGER.error("CSV file not found: %s", csv_path)
+        return False
+    except Exception as ex: # pylint: disable=broad-exception-caught
+        LOGGER.error("An error occurred: %s", ex)
+        return False
+
+if __name__ == "__main__":
+    ### Define some Variables
+    # Bootstrap API connection
+    IO_CLIENT = get_tenable_io_client()
+    NOT_OUR_ASSETS_CSV = "./FilePath.csv"
+
+    bulk_delete_assets_from_csv(IO_CLIENT, NOT_OUR_ASSETS_CSV)
