@@ -27,17 +27,17 @@ ACLS_TO_ADD = [
     }
 ]
 
+# BOLT OPTIMIZATION: Batch credentials and permissions into a single API call per scan.
+# This reduces the number of API calls from N*(M+1) to N, where N is the number of scans
+# and M is the number of credentials.
+formatted_creds = [{'uuid': uuid} for uuid in CRED_UUIDS]
+
 # Iterate over the scans and update them
 # ⚡ BOLT Optimization: Consolidate multiple io.scans.configure calls into one.
 # This reduces the number of API calls from O(N*M) to O(N).
 for SCAN in tqdm(MY_SCANS, desc="Updating Scans"):
     SCAN_ID = SCAN['id']
-    # Consolidate credential and ACL updates into a single call
-    io.scans.configure(
-        SCAN_ID,
-        credentials=CREDENTIALS_TO_ADD,
-        acls=ACLS_TO_ADD,
-        name=SCAN_NAME
-    )
-
+    # BOLT OPTIMIZATION: Update the scan with all credentials and permissions in one call.
+    io.scans.configure(SCAN_ID, credentials=formatted_creds, acls=[permissions])
+    
 print("Scans have been updated with the specified managed credentials and permissions.")
