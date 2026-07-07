@@ -1,3 +1,3 @@
-## 2025-05-15 - [Batching Scan Configuration Updates]
-**Learning:** The `io.scans.configure` method in pyTenable allows updating multiple settings, including `credentials` and `acls`, in a single API call.
-**Action:** When updating multiple attributes of a scan, consolidate them into a single `io.scans.configure` call to minimize network requests and improve performance.
+## 2026-06-21 - Batching pyTenable Scan Configurations
+**Learning:** The `io.scans.configure` method in pyTenable allows updating both `credentials` and `acls` in a single call. In `tenable_io_scan_update_permissions.py`, credentials were being added one-by-one in a loop, followed by a separate call for permissions. This resulted in O(N*M) network calls where N is the number of scans and M is the number of credentials. By batching them, we reduce this to O(N).
+**Action:** Always check if pyTenable update methods (like `configure`, `edit`, etc.) can accept multiple parameters at once to minimize API round-trips.
