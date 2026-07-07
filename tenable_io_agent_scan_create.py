@@ -6,6 +6,7 @@ import datetime
 import json
 import logging
 import tqdm
+from pprint import pprint
 from tenable_config import get_tenable_io_client
 
 ### Define some Variables

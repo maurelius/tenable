@@ -16,6 +16,7 @@ asset_list = io.exports.assets()
 
 # Define FQDNs we own that we don't want 
 our_fqdns = ['my.fqdn1.com', 'my.fqdn2.net']
+
 for asset in asset_list:
     host_fqdn = asset.get('fqdn', [])
     host_uuid = asset.get('id')
@@ -30,5 +31,9 @@ for asset in asset_list:
         print(f"Host w/ IP Address: {host_ipv4} has no FQDN")
     else:
         # Check if any of our FQDNs are in the host's FQDN list
-        if not any(fqdn in fqdn_part for fqdn in our_fqdns for fqdn_part in host_fqdn) and 'My Access Group Manage Assets' not in tag_values:
-            print(f"Rogue asset found: {host_fqdn}")
+        is_managed = 'My Access Group Manage Assets' in tag_values
+        matches_our_domains = any(
+            fqdn in fqdn_part for fqdn in our_fqdns for fqdn_part in host_fqdns
+        )
+        if not matches_our_domains and not is_managed:
+            print(f"Rogue asset found: {host_fqdns}")
