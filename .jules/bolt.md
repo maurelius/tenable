@@ -1,3 +1,3 @@
-## 2026-06-21 - Tenable.io API Batching Optimization
-**Learning:** The `io.scans.configure` method in pyTenable allows updating both `credentials` (as a list of dictionaries) and `acls` in a single call. However, the `acls` argument must be a list of correctly formatted ACL objects (including `type`, `permissions`, etc.), not a nested settings dictionary.
-**Action:** Batch configuration updates to reduce network overhead from O(N*M) to O(N), but ensure the payload matches the expected API schema for each field.
+## 2026-06-21 - Batching pyTenable Scan Configurations
+**Learning:** The `io.scans.configure` method in pyTenable allows updating both `credentials` and `acls` in a single call. In `tenable_io_scan_update_permissions.py`, credentials were being added one-by-one in a loop, followed by a separate call for permissions. This resulted in O(N*M) network calls where N is the number of scans and M is the number of credentials. By batching them, we reduce this to O(N).
+**Action:** Always check if pyTenable update methods (like `configure`, `edit`, etc.) can accept multiple parameters at once to minimize API round-trips.
