@@ -24,3 +24,7 @@
 
 **Learning:** Sequential `io.assets.tags()` calls for every asset retrieved via `io.assets.list()` creates an O(N) network bottleneck. Replacing this with `io.exports.assets()` reduces overhead to O(1) export job, as the Export API includes tags in the asset record payload.
 **Action:** Use bulk Export APIs instead of sequential lookup methods whenever processing attributes (like tags) across a large set of assets.
+
+## 2026-07-08 - Caching Tag Details in IP Network Resolution
+**Learning:** In scripts like `tenable_io_get_ip_networks.py` that resolve tag-based targets across many scans, redundant API calls for shared tags create a massive performance bottleneck. Implementing a simple dictionary-based cache reduced potential network overhead from O(Total Tag References) to O(Unique Tags).
+**Action:** Always implement a cache when performing nested API lookups for resources (like tags or assets) that are likely to be shared across a list of parent objects (like scans).
