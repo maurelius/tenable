@@ -17,23 +17,26 @@ Outputs:
   - Markdown file with details of scan target networks, including scan ID, scan name, tag ID, property, and value (e.g., IP subnets or UUIDs),
     along with summary statistics for each field.
 '''
-from tenable.io import TenableIO
+from tenable_config import get_tenable_io_client
 import json
-import os
 import logging
 import pandas as pd
-from uuid import UUID
 
 # Note: The above imports assume you have pytenable installed and properly configured with your Tenable.io credentials.
 
-io = TenableIO()
+# ⚡ BOLT Optimization: Use consistent client initialization and logging level
+logging.basicConfig(level=logging.INFO)
+io = get_tenable_io_client()
 scans = io.scans.list()
-# --- Create a dictionary for efficient lookup of scan names ---
-scan_name_map = {s['id']: s['name'] for s in scans}
 
 # --- Processing Logic (Fixed) ---
 # Initialize an empty list to store the data for the DataFrame
 all_extracted_data = []
+
+# ⚡ BOLT Optimization: Cache tag details to avoid redundant API calls
+tag_cache = {}
+cache_hits = 0
+cache_misses = 0
 
 # Loop through the list of scans, using the full scan dictionary
 for scan in scans:
@@ -51,7 +54,15 @@ for scan in scans:
         
         for t in tag_targets:
             try:
-                tags = io.tags.details(t)
+                # ⚡ BOLT Optimization: Use cache to reduce network requests from O(Total) to O(Unique)
+                if t in tag_cache:
+                    tags = tag_cache[t]
+                    cache_hits += 1
+                else:
+                    tags = io.tags.details(t)
+                    tag_cache[t] = tags
+                    cache_misses += 1
+
                 filter_dict = tags.get("filters")
                 
                 if not filter_dict or 'asset' not in filter_dict:
@@ -126,3 +137,6 @@ with open('TENABLE-SCAN-TARGETS.md', 'w') as f:
     f.write('### IP Subnets Summary\n\n')
     f.write(df['value'].describe().to_markdown(tablefmt='github'))
     f.write('\n\n')
+
+# ⚡ BOLT: Report performance metrics
+print(f"\nTag resolution stats: Cache Hits: {cache_hits}, Cache Misses: {cache_misses}")
