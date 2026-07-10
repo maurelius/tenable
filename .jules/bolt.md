@@ -24,3 +24,7 @@
 
 **Learning:** Sequential `io.assets.tags()` calls for every asset retrieved via `io.assets.list()` creates an O(N) network bottleneck. Replacing this with `io.exports.assets()` reduces overhead to O(1) export job, as the Export API includes tags in the asset record payload.
 **Action:** Use bulk Export APIs instead of sequential lookup methods whenever processing attributes (like tags) across a large set of assets.
+
+## 2026-07-10 - Server-side Tag Filtering
+**Learning:** The Tenable.io API supports server-side filtering in `io.tags.list()` using tuples like `('category_name', 'eq', value)`. This is significantly more efficient than retrieving all tags and filtering locally, especially in large environments.
+**Action:** Always prefer server-side filtering in pyTenable list methods when a specific subset of data is required.

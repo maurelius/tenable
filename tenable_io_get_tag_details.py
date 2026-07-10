@@ -6,49 +6,68 @@ import logging
 import pandas as pd
 from tenable_config import get_tenable_io_client
 
-### Define some Variables
-# Set up logging
-logging.basicConfig(level=logging.WARNING)
-# Bootstrap API connection
-io = get_tenable_io_client()
-category = input('Enter the tag category to look up: ')
+# Define a regular expression pattern to match IP address subnets globally
+SUBNET_PATTERN = re.compile(r'\d+\.\d+\.\d+\.\d+/\d+')
 
-# Grab the UUIDs of every tag in category, don't process tag multiple times
-uuids = set()
+def get_tag_category_subnets(io_client, category_name):
+    """
+    Retrieves all unique subnets from the asset filters of tags within a specific category.
+    """
+    # Grab the UUIDs of every tag in category, don't process tag multiple times
+    # ⚡ BOLT Optimization: Use server-side filtering to reduce network overhead and local
+    # processing. Instead of iterating through all tags, we request only those in the
+    # specified category.
+    # API calls: O(1) for list
+    uuids = {d['uuid'] for d in io_client.tags.list(('category_name', 'eq', category_name))}
 
-for d in io.tags.list():
-    if d['category_name'] == category and d['uuid'] not in uuids:
-        uuids.add(d['uuid'])
+    subnets_found = set()
 
-# Create an empty set to store the IP address subnets
-# ⚡ BOLT Optimization: Using a set for O(1) deduplication and O(N) total complexity
-subnets_found = set()
+    # Loop through the matching UUIDs
+    # API calls: O(N) where N is unique tags in the category
+    for uuid in uuids:
+        # Retrieve the details for the UUID
+        details = io_client.tags.details(uuid)
 
-# Define a regular expression pattern to match IP address subnets
-SUBNET_PATTERN = r'\d+\.\d+\.\d+\.\d+/\d+'
+        # Extract the 'filters' dictionary from the details
+        filters = details.get('filters', {})
 
-# Loop through the matching UUIDs
-for uuid in uuids:
-    # Retrieve the details for the UUID
-    details = io.tags.details(uuid)
+        # Extract the 'asset' field from the filters dictionary as a string
+        asset_filter_str = filters.get('asset', '')
 
-    # Extract the 'filters' dictionary from the details
-    filters = details.get('filters', {})
+        # Use regular expressions to find IP address subnets in the 'asset' field
+        subnets = SUBNET_PATTERN.findall(asset_filter_str)
 
-    # Extract the 'asset' field from the filters dictionary as a string
-    asset_filter_str = filters.get('asset', '')
+        # Add the found subnets to the set
+        subnets_found.update(subnets)
 
-    # Use regular expressions to find IP address subnets in the 'asset' field
-    subnets = re.findall(SUBNET_PATTERN, asset_filter_str)
+    return sorted(list(subnets_found))
 
-    # Add the found subnets to the set
-    subnets_found.update(subnets)
+def main():
+    """Main execution function"""
+    # Set up logging
+    logging.basicConfig(level=logging.WARNING)
+    # Bootstrap API connection
+    io = get_tenable_io_client()
 
-# Sort the subnets for a cleaner report
-subnet_list = sorted(list(subnets_found))
-DF_SUBNETS = pd.DataFrame(subnet_list).rename(columns={0: 'Subnet'})
-# Print the list of IP address subnets
-with open('TENABLE-SUBNETS.md', 'w', encoding='utf-8') as f:
-    f.write(f'# Tenable Subnets for Tag Category: {category}\n\n')
-    f.write(DF_SUBNETS.to_markdown(tablefmt='github'))
-    f.write('\n')
+    category = input('Enter the tag category to look up: ')
+
+    # ⚡ BOLT Optimization: Moved core logic to a separate function for testability and clarity.
+    subnet_list = get_tag_category_subnets(io, category)
+
+    # Sort the subnets for a cleaner report
+    df_subnets = pd.DataFrame(subnet_list).rename(columns={0: 'Subnet'})
+
+    # Print the list of IP address subnets to a file
+    output_file = 'TENABLE-SUBNETS.md'
+    with open(output_file, 'w', encoding='utf-8') as fobj:
+        fobj.write(f'# Tenable Subnets for Tag Category: {category}\n\n')
+        if not df_subnets.empty:
+            fobj.write(df_subnets.to_markdown(tablefmt='github'))
+        else:
+            fobj.write('No subnets found for this category.')
+        fobj.write('\n')
+
+    print(f"Results written to {output_file}")
+
+if __name__ == '__main__':
+    main()
