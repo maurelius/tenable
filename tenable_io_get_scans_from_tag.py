@@ -34,6 +34,8 @@ from tqdm import tqdm
 # Note: The above imports assume you have pytenable installed and properly
 # configured with your Tenable.io credentials.
 
+UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+
 # Helpers / Utilities
 def get_scan_details(tio_client, scan_id):
     """Wrapper to get scan details with retry on 404 errors."""
@@ -228,6 +230,8 @@ def collect_tag_filters_and_value(tio_client, target_map):
     """
     results = []
     tag_cache = {}  # ⚡ BOLT: Cache tag details to avoid redundant API calls
+    cache_hits = 0
+    cache_misses = 0
     # Correct 2-value unpack from dict.items()
     for scan_id, meta in tqdm(target_map.items(), desc="Resolving tags", leave=False):
         if not isinstance(meta, dict):
@@ -245,10 +249,12 @@ def collect_tag_filters_and_value(tio_client, target_map):
                 # ⚡ BOLT: Use cache if available to reduce network requests
                 if t in tag_cache:
                     tags = tag_cache[t]
+                    cache_hits += 1
                 else:
                     # Tenable.io API call: tag value details (contains 'value' and 'filters')
                     tags = tio_client.tags.details(t)
                     tag_cache[t] = tags
+                    cache_misses += 1
 
                 tag_value = tags.get("value")
                 if not tag_value:

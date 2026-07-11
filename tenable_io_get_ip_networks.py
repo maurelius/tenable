@@ -3,69 +3,83 @@
 Tenable.io - Get IP Networks from Scan Tags
 
 Description:
-  This script retrieves all scans from Tenable.io and extracts the IP networks associated with each scan through their tag targets.
-  It processes the tag filters to identify asset-related tags and extracts the relevant IP subnet information.
-  The collected data is compiled into a pandas DataFrame and saved as a Markdown file for reporting purposes, including summary statistics for each field.
-  
+  This script retrieves all scans from Tenable.io and extracts the IP networks
+  associated with each scan through their tag targets.
+  It processes the tag filters to identify asset-related tags and extracts the
+  relevant IP subnet information.
+  The collected data is compiled into a pandas DataFrame and saved as a Markdown
+  file for reporting purposes, including summary statistics for each field.
+
 Auth/Secrets:
   - Use TIO_ACCESS_KEY / TIO_SECRET_KEY env vars.
-  
+
 Requires:
   pip install pytenable pandas
-  
+
 Outputs:
-  - Markdown file with details of scan target networks, including scan ID, scan name, tag ID, property, and value (e.g., IP subnets or UUIDs),
+  - Markdown file with details of scan target networks, including scan ID,
+    scan name, tag ID, property, and value (e.g., IP subnets or UUIDs),
     along with summary statistics for each field.
 '''
-from tenable.io import TenableIO
 import json
-import os
 import logging
 import pandas as pd
-from uuid import UUID
+from tenable.io import TenableIO
 
-# Note: The above imports assume you have pytenable installed and properly configured with your Tenable.io credentials.
+# Note: The above imports assume you have pytenable installed and properly
+# configured with your Tenable.io credentials.
 
 io = TenableIO()
 scans = io.scans.list()
-# --- Create a dictionary for efficient lookup of scan names ---
-scan_name_map = {s['id']: s['name'] for s in scans}
 
 # --- Processing Logic (Fixed) ---
 # Initialize an empty list to store the data for the DataFrame
 all_extracted_data = []
 
+# ⚡ BOLT Optimization: Cache tag details to avoid redundant API calls
+# This reduces API overhead from O(Total References) to O(Unique Tags)
+tag_cache = {}
+cache_hits = 0
+cache_misses = 0
+
 # Loop through the list of scans, using the full scan dictionary
 for scan in scans:
     scan_id = scan['id']
     scan_name = scan['name']
-    
+
     try:
         scan_details = io.scans.details(scan_id)
         settings = scan_details.get('settings')
         tag_targets = settings.get('tag_targets') if settings else None
-        
+
         if not tag_targets:
-            logging.info(f"No tag_targets found for scan id {scan_id}. Skipping.")
+            logging.info("No tag_targets found for scan id %s. Skipping.", scan_id)
             continue
-        
+
         for t in tag_targets:
             try:
-                tags = io.tags.details(t)
+                # ⚡ BOLT Optimization: Use cache if available to reduce network requests
+                if t in tag_cache:
+                    tags = tag_cache[t]
+                    cache_hits += 1
+                else:
+                    tags = io.tags.details(t)
+                    tag_cache[t] = tags
+                    cache_misses += 1
                 filter_dict = tags.get("filters")
-                
+
                 if not filter_dict or 'asset' not in filter_dict:
-                    logging.info(f"No asset filters found for tag {t}. Skipping.")
+                    logging.info("No asset filters found for tag %s. Skipping.", t)
                     continue
-                
+
                 asset_json_string = filter_dict['asset']
                 asset_data = json.loads(asset_json_string)
-                
+
                 # Check for an 'and' list, use a default empty list if not present
                 filter_list = asset_data.get('and', [])
-                
+
                 if not filter_list:
-                    logging.info(f"No 'and' filters found for tag {t}. Skipping.")
+                    logging.info("No 'and' filters found for tag %s. Skipping.", t)
                     continue
 
                 for item in filter_list:
@@ -76,9 +90,9 @@ for scan in scans:
                         'property': item.get('property'),
                         'value': None # Initialize value as None
                     }
-                    
+
                     value = item.get('value')
-                    
+
                     if isinstance(value, list) and value:
                         # Handle the nested list case, like [["..."]]
                         # Safely access the value even if it's deeply nested
@@ -89,30 +103,30 @@ for scan in scans:
                                 flat_value = value[0][0]
                             else:
                                 flat_value = value[0]
-                            
+
                             extracted_item['value'] = flat_value
                         except (IndexError, TypeError):
                             # In case of a malformed list, set value to None
-                            logging.warning(f"Could not extract value from nested list for tag {t}.")
+                            logging.warning("Could not extract value for tag %s.", t)
                             extracted_item['value'] = None
                     else:
                         extracted_item['value'] = value
 
                     all_extracted_data.append(extracted_item)
 
-            except Exception as e:
-                logging.error(f"Error processing tag {t} for scan {scan_id}: {e}")
+            except Exception as e: # pylint: disable=broad-exception-caught
+                logging.error("Error processing tag %s for scan %s: %s", t, scan_id, e)
                 continue
 
-    except Exception as e:
-        logging.error(f"Error processing scan {scan_id}: {e}")
+    except Exception as e: # pylint: disable=broad-exception-caught
+        logging.error("Error processing scan %s: %s", scan_id, e)
         continue
 
 # Create the DataFrame from the collected list of dictionaries
 df = pd.DataFrame(all_extracted_data)
 
-with open('TENABLE-SCAN-TARGETS.md', 'w') as f:
-    f.write(f'# Tenable Scans & Their Subnets\n\n')
+with open('TENABLE-SCAN-TARGETS.md', 'w', encoding='utf-8') as f:
+    f.write('# Tenable Scans & Their Subnets\n\n')
     f.write('## Scan Target Networks\n\n')
     f.write(df.to_markdown(tablefmt='github'))
     f.write('\n\n')
@@ -126,3 +140,6 @@ with open('TENABLE-SCAN-TARGETS.md', 'w') as f:
     f.write('### IP Subnets Summary\n\n')
     f.write(df['value'].describe().to_markdown(tablefmt='github'))
     f.write('\n\n')
+
+# Print cache statistics
+print(f"\nTag resolution stats: Cache Hits: {cache_hits}, Cache Misses: {cache_misses}")

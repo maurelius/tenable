@@ -24,3 +24,8 @@
 
 **Learning:** Sequential `io.assets.tags()` calls for every asset retrieved via `io.assets.list()` creates an O(N) network bottleneck. Replacing this with `io.exports.assets()` reduces overhead to O(1) export job, as the Export API includes tags in the asset record payload.
 **Action:** Use bulk Export APIs instead of sequential lookup methods whenever processing attributes (like tags) across a large set of assets.
+
+## 2026-07-11 - Verifying and Completing Partial Optimizations
+
+**Learning:** Existing performance optimizations (like the tag cache in `tenable_io_get_scans_from_tag.py`) can be partially implemented or contain critical bugs (e.g., missing variable initializations, broken logic flows, or missing dependencies). Trusting an "already optimized" script without verification can lead to runtime errors.
+**Action:** When encountering existing optimizations, always run tests or dry-runs to ensure they are fully functional. Complete the implementation by adding hit/miss tracking and fixing logic gaps.
