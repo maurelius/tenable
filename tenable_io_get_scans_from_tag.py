@@ -31,6 +31,8 @@ from restfly.errors import NotFoundError
 from tenable.io import TenableIO
 from tqdm import tqdm
 
+UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+
 # Note: The above imports assume you have pytenable installed and properly
 # configured with your Tenable.io credentials.
 
@@ -228,6 +230,8 @@ def collect_tag_filters_and_value(tio_client, target_map):
     """
     results = []
     tag_cache = {}  # ⚡ BOLT: Cache tag details to avoid redundant API calls
+    cache_hits = 0
+    cache_misses = 0
     # Correct 2-value unpack from dict.items()
     for scan_id, meta in tqdm(target_map.items(), desc="Resolving tags", leave=False):
         if not isinstance(meta, dict):
@@ -244,21 +248,14 @@ def collect_tag_filters_and_value(tio_client, target_map):
                 t = normalize_tag_value_uuid(raw_t)
                 # ⚡ BOLT: Use cache if available to reduce network requests
                 if t in tag_cache:
-                    tags = tag_cache[t]
+                    cache_hits += 1
+                    cached_tag = tag_cache[t]
                 else:
-                    # Tenable.io API call: tag value details (contains 'value' and 'filters')
-                    tags = tio_client.tags.details(t)
-                    tag_cache[t] = tags
-
-                tag_value = tags.get("value")
-                if not tag_value:
-                    logging.info("No 'value' found for tag value UUID %s. Skipping.", t)
-                    continue
-
-                if t not in tag_cache:
+                    cache_misses += 1
                     # Tenable.io API call: tag value details (contains 'value' and 'filters')
                     tags = tio_client.tags.details(t)
                     tag_value = tags.get("value")
+
                     if not tag_value:
                         logging.info("No 'value' found for tag value UUID %s. Skipping.", t)
                         tag_cache[t] = None
@@ -275,8 +272,7 @@ def collect_tag_filters_and_value(tio_client, target_map):
                         "value": tag_value,
                         "filters": filter_list
                     }
-
-                cached_tag = tag_cache[t]
+                    cached_tag = tag_cache[t]
                 if cached_tag is None:
                     continue
 
