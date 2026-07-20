@@ -1,5 +1,11 @@
 # Bolt Changelog
 
+## 2026-07-06 - Unreachable Cache Blocks and NameErrors in Caching Logic
+
+**Learning:** When adding caching to lookups (like resolving tag values in `tenable_io_get_scans_from_tag.py`), storing raw/incomplete API responses in the cache before validation checks can render downstream cache-population blocks unreachable. Furthermore, cache-stats tracking variables (`cache_hits`, `cache_misses`) must be defined globally at the module level and reset correctly to prevent runtime `NameError` exceptions across repeated invocations.
+
+**Action:** Always verify that cache lookups only save completely resolved/parsed structures, and structure conditional checks such that the population blocks are reachable. Ensure stats tracking variables are properly initialized and reset.
+
 ## 2026-06-21 - Batching pyTenable Scan Configurations
 
 **Learning:** The `io.scans.configure` method in pyTenable allows updating both `credentials` and `acls` in a single call. In `tenable_io_scan_update_permissions.py`, credentials were being added one-by-one in a loop, followed by a separate call for permissions. This resulted in O(N*M) network calls where N is the number of scans and M is the number of credentials. By batching them, we reduce this to O(N).

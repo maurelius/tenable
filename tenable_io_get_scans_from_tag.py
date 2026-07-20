@@ -34,6 +34,13 @@ from tqdm import tqdm
 # Note: The above imports assume you have pytenable installed and properly
 # configured with your Tenable.io credentials.
 
+# Global compiled regex for UUID validation
+UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+
+# Caching statistics tracking
+cache_hits = 0  # pylint: disable=invalid-name
+cache_misses = 0  # pylint: disable=invalid-name
+
 # Helpers / Utilities
 def get_scan_details(tio_client, scan_id):
     """Wrapper to get scan details with retry on 404 errors."""
@@ -95,6 +102,62 @@ def normalize_tag_value_uuid(raw):
     if not UUID_RE.match(v):
         raise ValueError(f"tag_value_uuid has value of {raw!r}. Does not match UUID pattern")
     return v
+
+def _normalize_targets(raw_targets):
+    """
+    Normalize list of raw targets into valid UUID strings.
+    Returns tuple: (normalized_list, dropped_count)
+    """
+    normalized = []
+    dropped = 0
+    for x in raw_targets:
+        u = _normalize_uuid_like(x)
+        if u:
+            normalized.append(u)
+        else:
+            dropped += 1
+    return normalized, dropped
+
+def _resolve_tag_details_with_normalized(tio_client, t, tag_cache):
+    """
+    Resolve and return tag value and filters for normalized tag UUID 't'.
+    Updates global cache tracking variables.
+    """
+    global cache_hits, cache_misses  # pylint: disable=global-statement
+    if t in tag_cache:
+        cache_hits += 1
+        return tag_cache[t]
+
+    cache_misses += 1
+    try:
+        # Tenable.io API call: tag value details (contains 'value' and 'filters')
+        tags = tio_client.tags.details(t)
+        tag_value = tags.get("value")
+        if not tag_value:
+            logging.info("No 'value' found for tag value UUID %s. Skipping.", t)
+            tag_cache[t] = None
+            return None
+
+        filters = tags.get("filters")
+        filter_list = parse_asset_filters(filters, t)
+        if filter_list is None:
+            tag_cache[t] = None
+            return None
+
+        entry = {
+            "value": tag_value,
+            "filters": filter_list
+        }
+        tag_cache[t] = entry
+        return entry
+    except NotFoundError as nf:
+        logging.error("Error processing tag %s: %s", t, nf)
+        tag_cache[t] = None
+        return None
+    except Exception as e:  # pylint: disable=broad-except
+        logging.error("Unexpected error processing tag %r: %s", t, e)
+        tag_cache[t] = None
+        return None
 
 def parse_asset_filters(filters, tag_id):
     """Return a list of AND filters from filters['asset'], handling JSON string or dict."""
@@ -181,14 +244,10 @@ def get_tag_targets(scans_list, tio_client):
             dropped_empty += 1
             continue
 
-        normalized = []
-        for x in raw_targets:
-            u = _normalize_uuid_like(x)
-            if u:
-                normalized.append(u)
-            else:
-                dropped_items_invalid += 1
-                logging.debug("Scan %s: dropping malformed tag target %r", scan_id, x)
+        normalized, dropped = _normalize_targets(raw_targets)
+        if dropped > 0:
+            dropped_items_invalid += dropped
+            logging.debug("Scan %s: dropped %d malformed tag target(s)", scan_id, dropped)
 
         if not normalized:
             dropped_all_invalid += 1
@@ -226,6 +285,10 @@ def collect_tag_filters_and_value(tio_client, target_map):
         ...
       ]
     """
+    global cache_hits, cache_misses  # pylint: disable=global-statement
+    cache_hits = 0
+    cache_misses = 0
+
     results = []
     tag_cache = {}  # ⚡ BOLT: Cache tag details to avoid redundant API calls
     # Correct 2-value unpack from dict.items()
@@ -242,41 +305,7 @@ def collect_tag_filters_and_value(tio_client, target_map):
         for raw_t in uuids:
             try:
                 t = normalize_tag_value_uuid(raw_t)
-                # ⚡ BOLT: Use cache if available to reduce network requests
-                if t in tag_cache:
-                    tags = tag_cache[t]
-                else:
-                    # Tenable.io API call: tag value details (contains 'value' and 'filters')
-                    tags = tio_client.tags.details(t)
-                    tag_cache[t] = tags
-
-                tag_value = tags.get("value")
-                if not tag_value:
-                    logging.info("No 'value' found for tag value UUID %s. Skipping.", t)
-                    continue
-
-                if t not in tag_cache:
-                    # Tenable.io API call: tag value details (contains 'value' and 'filters')
-                    tags = tio_client.tags.details(t)
-                    tag_value = tags.get("value")
-                    if not tag_value:
-                        logging.info("No 'value' found for tag value UUID %s. Skipping.", t)
-                        tag_cache[t] = None
-                        continue
-
-                    filters = tags.get("filters")
-                    filter_list = parse_asset_filters(filters, t)
-                    if not filter_list:
-                        # parse_asset_filters already logged why
-                        tag_cache[t] = None
-                        continue
-
-                    tag_cache[t] = {
-                        "value": tag_value,
-                        "filters": filter_list
-                    }
-
-                cached_tag = tag_cache[t]
+                cached_tag = _resolve_tag_details_with_normalized(tio_client, t, tag_cache)
                 if cached_tag is None:
                     continue
 
@@ -293,11 +322,7 @@ def collect_tag_filters_and_value(tio_client, target_map):
                 # Covers nested list shapes and regex mismatches
                 logging.error("Error processing tag %r: %s", raw_t, ve)
                 continue
-            except NotFoundError as nf:
-                # Tag value UUID not found (deleted/permissions)
-                logging.error("Error processing tag %s: %s", raw_t, nf)
-                continue
-            except Exception as e: # pylint: disable=broad-except
+            except Exception as e:  # pylint: disable=broad-except
                 logging.error("Unexpected error processing tag %r: %s", raw_t, e)
                 continue
 
