@@ -1,5 +1,9 @@
 # Bolt Changelog
 
+## 2026-07-06 - Fixing and Standardizing Caching Logic across Tenable Scripts
+**Learning:** Broken cache logic (like checking `t not in tag_cache` *after* setting `tag_cache[t] = tags`) bypasses filter list parsing, resulting in incorrect data layouts. Furthermore, redundant calls to `io.tags.details` in nested loops across different scripts (such as `tenable_io_get_ip_networks.py` and `tenable_io_get_scans_from_tag.py`) create an O(N) network bottleneck. Consolidating nested lookups into a robust cached helper reduces API overhead to O(Unique Tags) and keeps branches/local variables within pylint limits.
+**Action:** Encapsulate cache checks and parsing inside simple helper functions, and ensure caching variables are fully initialized to avoid NameErrors.
+
 ## 2026-06-21 - Batching pyTenable Scan Configurations
 
 **Learning:** The `io.scans.configure` method in pyTenable allows updating both `credentials` and `acls` in a single call. In `tenable_io_scan_update_permissions.py`, credentials were being added one-by-one in a loop, followed by a separate call for permissions. This resulted in O(N*M) network calls where N is the number of scans and M is the number of credentials. By batching them, we reduce this to O(N).
