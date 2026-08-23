@@ -24,3 +24,8 @@
 
 **Learning:** Sequential `io.assets.tags()` calls for every asset retrieved via `io.assets.list()` creates an O(N) network bottleneck. Replacing this with `io.exports.assets()` reduces overhead to O(1) export job, as the Export API includes tags in the asset record payload.
 **Action:** Use bulk Export APIs instead of sequential lookup methods whenever processing attributes (like tags) across a large set of assets.
+
+## 2026-07-06 - Fixing and Tracking Broken Cache Implementations
+
+**Learning:** A buggy or incomplete cache logic can bypass the cache entirely, perform redundant network lookups, and hide silent bugs like NameErrors. Standardizing cache tracking via structured stats dictionaries (`{"hits": 0, "misses": 0}`) and encapsulating cache logic within a standalone, focused helper function improves code clarity, maintains a 10/10 pylint rating, and guarantees precise performance instrumentation.
+**Action:** Always construct a focused cache resolution helper function (e.g., `_resolve_resource_with_cache(...)`) to encapsulate the hit/miss logic and maintain clean high-level iterator loops.

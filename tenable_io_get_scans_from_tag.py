@@ -31,8 +31,11 @@ from restfly.errors import NotFoundError
 from tenable.io import TenableIO
 from tqdm import tqdm
 
-# Note: The above imports assume you have pytenable installed and properly
-# configured with your Tenable.io credentials.
+# Global UUID compiled regex pattern
+UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE
+)
 
 # Helpers / Utilities
 def get_scan_details(tio_client, scan_id):
@@ -122,6 +125,20 @@ def parse_asset_filters(filters, tag_id):
     return filter_list
 
 
+def _normalize_targets(scan_id, raw_targets):
+    """Normalizes a list of raw targets, filtering out invalid ones."""
+    normalized = []
+    dropped_count = 0
+    for x in raw_targets:
+        u = _normalize_uuid_like(x)
+        if u:
+            normalized.append(u)
+        else:
+            dropped_count += 1
+            logging.debug("Scan %s: dropping malformed tag target %r", scan_id, x)
+    return normalized, dropped_count
+
+
 # Build tag-target map WITH scan metadata
 def get_tag_targets(scans_list, tio_client):
     """
@@ -181,14 +198,8 @@ def get_tag_targets(scans_list, tio_client):
             dropped_empty += 1
             continue
 
-        normalized = []
-        for x in raw_targets:
-            u = _normalize_uuid_like(x)
-            if u:
-                normalized.append(u)
-            else:
-                dropped_items_invalid += 1
-                logging.debug("Scan %s: dropping malformed tag target %r", scan_id, x)
+        normalized, dropped_count = _normalize_targets(scan_id, raw_targets)
+        dropped_items_invalid += dropped_count
 
         if not normalized:
             dropped_all_invalid += 1
@@ -206,6 +217,37 @@ def get_tag_targets(scans_list, tio_client):
         len(kept), dropped_empty, dropped_all_invalid, dropped_items_invalid
     )
     return kept
+
+
+def _resolve_tag_details_with_normalized(tio_client, t, tag_cache, stats):
+    """
+    Resolves tag details (value and filters) for a given UUID, using and updating the cache.
+    Updates stats tracking hits and misses.
+    """
+    if t in tag_cache:
+        stats["hits"] += 1
+        return tag_cache[t]
+
+    stats["misses"] += 1
+    tags = tio_client.tags.details(t)
+    tag_value = tags.get("value")
+    if not tag_value:
+        logging.info("No 'value' found for tag value UUID %s. Skipping.", t)
+        tag_cache[t] = None
+        return None
+
+    filters = tags.get("filters")
+    filter_list = parse_asset_filters(filters, t)
+    if not filter_list:
+        tag_cache[t] = None
+        return None
+
+    tag_cache[t] = {
+        "value": tag_value,
+        "filters": filter_list
+    }
+    return tag_cache[t]
+
 
 # Resolve tag values & filters and emit rows carrying scan metadata
 def collect_tag_filters_and_value(tio_client, target_map):
@@ -228,6 +270,8 @@ def collect_tag_filters_and_value(tio_client, target_map):
     """
     results = []
     tag_cache = {}  # ⚡ BOLT: Cache tag details to avoid redundant API calls
+    stats = {"hits": 0, "misses": 0}
+
     # Correct 2-value unpack from dict.items()
     for scan_id, meta in tqdm(target_map.items(), desc="Resolving tags", leave=False):
         if not isinstance(meta, dict):
@@ -235,55 +279,17 @@ def collect_tag_filters_and_value(tio_client, target_map):
                           scan_id, type(meta).__name__)
             continue
 
-        uuids = meta.get("uuids") or []
-        scan_name = meta.get("scan_name") or f"Scan {scan_id}"
-        scanner_name = meta.get("scanner_name") or "Unknown Scanner/Group"
-
-        for raw_t in uuids:
+        for raw_t in meta.get("uuids") or []:
             try:
                 t = normalize_tag_value_uuid(raw_t)
-                # ⚡ BOLT: Use cache if available to reduce network requests
-                if t in tag_cache:
-                    tags = tag_cache[t]
-                else:
-                    # Tenable.io API call: tag value details (contains 'value' and 'filters')
-                    tags = tio_client.tags.details(t)
-                    tag_cache[t] = tags
-
-                tag_value = tags.get("value")
-                if not tag_value:
-                    logging.info("No 'value' found for tag value UUID %s. Skipping.", t)
-                    continue
-
-                if t not in tag_cache:
-                    # Tenable.io API call: tag value details (contains 'value' and 'filters')
-                    tags = tio_client.tags.details(t)
-                    tag_value = tags.get("value")
-                    if not tag_value:
-                        logging.info("No 'value' found for tag value UUID %s. Skipping.", t)
-                        tag_cache[t] = None
-                        continue
-
-                    filters = tags.get("filters")
-                    filter_list = parse_asset_filters(filters, t)
-                    if not filter_list:
-                        # parse_asset_filters already logged why
-                        tag_cache[t] = None
-                        continue
-
-                    tag_cache[t] = {
-                        "value": tag_value,
-                        "filters": filter_list
-                    }
-
-                cached_tag = tag_cache[t]
+                cached_tag = _resolve_tag_details_with_normalized(tio_client, t, tag_cache, stats)
                 if cached_tag is None:
                     continue
 
                 results.append({
                     "scan_id": scan_id,
-                    "scan_name": scan_name,
-                    "scanner_uuid": scanner_name,
+                    "scan_name": meta.get("scan_name") or f"Scan {scan_id}",
+                    "scanner_uuid": meta.get("scanner_name") or "Unknown Scanner/Group",
                     "tag_value_uuid": t,
                     "value": cached_tag["value"],
                     "filters": cached_tag["filters"]
@@ -297,13 +303,15 @@ def collect_tag_filters_and_value(tio_client, target_map):
                 # Tag value UUID not found (deleted/permissions)
                 logging.error("Error processing tag %s: %s", raw_t, nf)
                 continue
-            except Exception as e: # pylint: disable=broad-except
+            except Exception as e:  # pylint: disable=broad-except
                 logging.error("Unexpected error processing tag %r: %s", raw_t, e)
                 continue
 
-    logging.info("Tag resolution stats: Cache Hits: %s, Cache Misses: %s", cache_hits, cache_misses)
-    print(f"\nTag resolution stats: Cache Hits: {cache_hits}, Cache Misses: {cache_misses}")
+    logging.info("Tag resolution stats: Cache Hits: %s, Cache Misses: %s",
+                 stats["hits"], stats["misses"])
+    print(f"\nTag resolution stats: Cache Hits: {stats['hits']}, Cache Misses: {stats['misses']}")
     return results
+
 
 if __name__ == "__main__":
     # Bootstrap Tenable.io client
