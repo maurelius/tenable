@@ -14,10 +14,12 @@ io = get_tenable_io_client()
 category = input('Enter the tag category to look up: ')
 
 # Grab the UUIDs of every tag in category, don't process tag multiple times
+# ⚡ BOLT Optimization: Use server-side filtering ('category_name', 'eq', category)
+# to minimize network payload and avoid fetching/paging through all tags in Tenable.io
 uuids = set()
 
-for d in io.tags.list():
-    if d['category_name'] == category and d['uuid'] not in uuids:
+for d in io.tags.list(('category_name', 'eq', category)):
+    if d['uuid'] not in uuids:
         uuids.add(d['uuid'])
 
 # Create an empty set to store the IP address subnets

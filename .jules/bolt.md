@@ -29,3 +29,8 @@
 
 **Learning:** A buggy or incomplete cache logic can bypass the cache entirely, perform redundant network lookups, and hide silent bugs like NameErrors. Standardizing cache tracking via structured stats dictionaries (`{"hits": 0, "misses": 0}`) and encapsulating cache logic within a standalone, focused helper function improves code clarity, maintains a 10/10 pylint rating, and guarantees precise performance instrumentation.
 **Action:** Always construct a focused cache resolution helper function (e.g., `_resolve_resource_with_cache(...)`) to encapsulate the hit/miss logic and maintain clean high-level iterator loops.
+
+## 2026-07-07 - Server-Side Filtering for Tag Listing
+
+**Learning:** Using `io.tags.list()` without filter parameters forces the SDK to retrieve and page through all tags across all categories in Tenable.io, performing local client-side filtering. Passing server-side filter tuples like `('category_name', 'eq', category)` offloads filtering to the backend API, reducing network transfer payload from $O(\text{Total Tags})$ to $O(\text{Matching Tags})$.
+**Action:** Always pass filter tuples to pyTenable listing endpoints (e.g., `io.tags.list(('category_name', 'eq', category))`) when querying resources by specific attributes.
