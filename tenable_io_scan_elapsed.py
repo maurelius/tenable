@@ -1,70 +1,69 @@
 """tenable_io_scan_elapsed.py: Gets the start and end time of a scan and outputs the time elapsed"""
-"""
-# TODO://
----
-- Dynamically grab scan_id from user input by name
-- Loop through multiple scans if given a list []
-"""
 
-# Import modules
-from time import strftime, localtime
-import time
 import logging
+import time
+from time import localtime, strftime
 from tenable_config import get_tenable_io_client
 
 # Specify the scan ID for now instead of dynamically grabbing it
-scan_id = 0000
+SCAN_ID = 0
 
-### Define some Variables
 # Set up logging
 logging.basicConfig(level=logging.WARNING)
-# Bootstrap API connection
-io = get_tenable_io_client()
 
-def check_scan_status(scan_id):
+
+def check_scan_status(tio_client, target_scan_id):
+    """Check and return status for the given scan ID."""
     try:
-        scan = io.scans.status(scan_id)
-        return scan
+        return tio_client.scans.status(target_scan_id)
     except KeyError as e:
-        print(f"KeyError: {e}. Possibly 'info' or 'status' key is missing in the response.")
-    except Exception as e:
+        print(f"KeyError: {e}. Possibly 'info' or 'status' key is missing in response.")
+    except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"Error: {e}")
     return None
 
-while True:
-    status = check_scan_status(scan_id)
 
-    if status is not None:
+def process_scan_elapsed(tio_client, target_scan_id):
+    """Process scan status and display scan duration/history details."""
+    while True:
+        status = check_scan_status(tio_client, target_scan_id)
+
+        if status is None:
+            print("Unable to retrieve scan status.")
+            break
+
         print(f"Scan status: {status}")
 
         if status == 'completed':
-            # Perform your action here
             print("Scan is completed. Performing action...")
-            # Add your code to perform the action
-            for scan in io.scans.history(scan_id):
+            # ⚡ BOLT Optimization: Hoist scan details API lookup outside history iteration loop.
+            # This reduces API calls from O(N) to O(1) where N is history count.
+            scan_details = tio_client.scans.details(target_scan_id)
+            scan_name = scan_details.get("settings", {}).get("name", "Unknown Scan")
+
+            for scan in tio_client.scans.history(target_scan_id):
                 starttime = scan['time_start']
                 endtime = scan['time_end']
                 timediff = endtime - starttime
                 hours, remainder = divmod(timediff, 3600)
                 minutes, seconds = divmod(remainder, 60)
-                print(f"Scan Name: ", io.scans.details(scan_id).get("settings", {}).get("name", {}))
-                print(f"Scan Start: ", strftime('%Y-%m-%d %H:%M:%S', localtime(scan['time_start'])))
-                print(f"Scan End: ", strftime('%Y-%m-%d %H:%M:%S', localtime(scan['time_end'])))
+                print("Scan Name: ", scan_name)
+                print("Scan Start: ", strftime('%Y-%m-%d %H:%M:%S', localtime(starttime)))
+                print("Scan End: ", strftime('%Y-%m-%d %H:%M:%S', localtime(endtime)))
                 print(f"Total time elapsed: {hours}h {minutes}m {seconds}s")
-            # Exit the loop after the action is performed
             break
 
-        elif status in ('canceled', 'empty', 'importing', 'paused', 'pending', 'processing', 'quarantined', 'running'):
-            # The scan is not completed yet, wait for a while before checking again
+        if status in (
+            'canceled', 'empty', 'importing', 'paused',
+            'pending', 'processing', 'quarantined', 'running'
+        ):
             print("Scan is still in progress. Waiting...")
-            time.sleep(60)  # Adjust the interval as needed
-
+            time.sleep(60)
         else:
-            # Handle other statuses as needed
             print(f"Unexpected scan status: {status}")
             break
 
-    else:
-        # Handle the case where the status cannot be retrieved
-        print("Unable to retrieve scan status.")
-        break
+
+if __name__ == '__main__':
+    io = get_tenable_io_client()
+    process_scan_elapsed(io, SCAN_ID)
