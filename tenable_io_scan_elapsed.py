@@ -40,6 +40,12 @@ while True:
         if status == 'completed':
             # Perform your action here
             print("Scan is completed. Performing action...")
+            # Fetch scan details once outside loop to avoid redundant network calls
+            # ⚡ BOLT Optimization: Hoist io.scans.details(scan_id) outside history loop
+            # This reduces API requests from O(N) to O(1) where N is scan history count
+            scan_details = io.scans.details(scan_id)
+            scan_name = scan_details.get("settings", {}).get("name", "")
+
             # Add your code to perform the action
             for scan in io.scans.history(scan_id):
                 starttime = scan['time_start']
@@ -47,14 +53,14 @@ while True:
                 timediff = endtime - starttime
                 hours, remainder = divmod(timediff, 3600)
                 minutes, seconds = divmod(remainder, 60)
-                print(f"Scan Name: ", io.scans.details(scan_id).get("settings", {}).get("name", {}))
-                print(f"Scan Start: ", strftime('%Y-%m-%d %H:%M:%S', localtime(scan['time_start'])))
-                print(f"Scan End: ", strftime('%Y-%m-%d %H:%M:%S', localtime(scan['time_end'])))
+                print("Scan Name: ", scan_name)
+                print("Scan Start: ", strftime('%Y-%m-%d %H:%M:%S', localtime(scan['time_start'])))
+                print("Scan End: ", strftime('%Y-%m-%d %H:%M:%S', localtime(scan['time_end'])))
                 print(f"Total time elapsed: {hours}h {minutes}m {seconds}s")
             # Exit the loop after the action is performed
             break
 
-        elif status in ('canceled', 'empty', 'importing', 'paused', 'pending', 'processing', 'quarantined', 'running'):
+        if status in ('canceled', 'empty', 'importing', 'paused', 'pending', 'processing', 'quarantined', 'running'):
             # The scan is not completed yet, wait for a while before checking again
             print("Scan is still in progress. Waiting...")
             time.sleep(60)  # Adjust the interval as needed
