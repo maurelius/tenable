@@ -3,126 +3,187 @@
 Tenable.io - Get IP Networks from Scan Tags
 
 Description:
-  This script retrieves all scans from Tenable.io and extracts the IP networks associated with each scan through their tag targets.
-  It processes the tag filters to identify asset-related tags and extracts the relevant IP subnet information.
-  The collected data is compiled into a pandas DataFrame and saved as a Markdown file for reporting purposes, including summary statistics for each field.
-  
+  This script retrieves all scans from Tenable.io and extracts the IP networks
+  associated with each scan through their tag targets.
+  It processes the tag filters to identify asset-related tags and extracts
+  the relevant IP subnet information.
+  The collected data is compiled into a pandas DataFrame and saved as a
+  Markdown file for reporting purposes, including summary statistics for each field.
+
 Auth/Secrets:
   - Use TIO_ACCESS_KEY / TIO_SECRET_KEY env vars.
-  
+
 Requires:
   pip install pytenable pandas
-  
+
 Outputs:
-  - Markdown file with details of scan target networks, including scan ID, scan name, tag ID, property, and value (e.g., IP subnets or UUIDs),
-    along with summary statistics for each field.
+  - Markdown file with details of scan target networks, including scan ID, scan name,
+    tag ID, property, and value (e.g., IP subnets or UUIDs), along with summary statistics.
 '''
-from tenable.io import TenableIO
 import json
-import os
 import logging
 import pandas as pd
-from uuid import UUID
+from tenable.io import TenableIO
+from tenable_config import get_tenable_io_client
 
-# Note: The above imports assume you have pytenable installed and properly configured with your Tenable.io credentials.
 
-io = TenableIO()
-scans = io.scans.list()
-# --- Create a dictionary for efficient lookup of scan names ---
-scan_name_map = {s['id']: s['name'] for s in scans}
-
-# --- Processing Logic (Fixed) ---
-# Initialize an empty list to store the data for the DataFrame
-all_extracted_data = []
-
-# Loop through the list of scans, using the full scan dictionary
-for scan in scans:
-    scan_id = scan['id']
-    scan_name = scan['name']
-    
+def _init_client():
+    """Initialize Tenable.io client using tenable_config or direct TenableIO fallback."""
     try:
-        scan_details = io.scans.details(scan_id)
-        settings = scan_details.get('settings')
-        tag_targets = settings.get('tag_targets') if settings else None
-        
-        if not tag_targets:
-            logging.info(f"No tag_targets found for scan id {scan_id}. Skipping.")
-            continue
-        
-        for t in tag_targets:
-            try:
-                tags = io.tags.details(t)
-                filter_dict = tags.get("filters")
-                
-                if not filter_dict or 'asset' not in filter_dict:
-                    logging.info(f"No asset filters found for tag {t}. Skipping.")
-                    continue
-                
-                asset_json_string = filter_dict['asset']
-                asset_data = json.loads(asset_json_string)
-                
-                # Check for an 'and' list, use a default empty list if not present
-                filter_list = asset_data.get('and', [])
-                
-                if not filter_list:
-                    logging.info(f"No 'and' filters found for tag {t}. Skipping.")
-                    continue
+        return get_tenable_io_client()
+    except (ValueError, KeyError, AttributeError):
+        return TenableIO()
 
-                for item in filter_list:
-                    extracted_item = {
-                        'scan_id': scan_id,
-                        'scan_name': scan_name,  # Add the scan name here
-                        'tag_id': t,
-                        'property': item.get('property'),
-                        'value': None # Initialize value as None
-                    }
-                    
-                    value = item.get('value')
-                    
-                    if isinstance(value, list) and value:
-                        # Handle the nested list case, like [["..."]]
-                        # Safely access the value even if it's deeply nested
-                        try:
-                            # Flatten the list to get the single UUID or IP
-                            # This handles cases like [["uuid"]] or ["ip"]
-                            if isinstance(value[0], list):
-                                flat_value = value[0][0]
-                            else:
-                                flat_value = value[0]
-                            
-                            extracted_item['value'] = flat_value
-                        except (IndexError, TypeError):
-                            # In case of a malformed list, set value to None
-                            logging.warning(f"Could not extract value from nested list for tag {t}.")
-                            extracted_item['value'] = None
-                    else:
-                        extracted_item['value'] = value
 
-                    all_extracted_data.append(extracted_item)
+def _get_tag_filters(io_client, tag_id, tag_cache, cache_stats):
+    """
+    Retrieves and parses asset filter list for a tag with dictionary caching.
 
-            except Exception as e:
-                logging.error(f"Error processing tag {t} for scan {scan_id}: {e}")
+    Args:
+        io_client: TenableIO client instance.
+        tag_id: UUID string of the tag.
+        tag_cache: Dictionary cache mapping tag_id to filter list.
+        cache_stats: Dictionary tracking hits and misses.
+
+    Returns:
+        list: Filter list from asset tag data, or None if not found/invalid.
+    """
+    if tag_id in tag_cache:
+        cache_stats['hits'] += 1
+        return tag_cache[tag_id]
+
+    cache_stats['misses'] += 1
+    try:
+        tags = io_client.tags.details(tag_id)
+        filter_dict = tags.get("filters") if isinstance(tags, dict) else None
+
+        if not filter_dict or 'asset' not in filter_dict:
+            logging.info("No asset filters found for tag %s. Skipping.", tag_id)
+            tag_cache[tag_id] = None
+            return None
+
+        asset_json_string = filter_dict['asset']
+        asset_data = json.loads(asset_json_string)
+        filter_list = asset_data.get('and', [])
+
+        if not filter_list:
+            logging.info("No 'and' filters found for tag %s. Skipping.", tag_id)
+            tag_cache[tag_id] = None
+            return None
+
+        tag_cache[tag_id] = filter_list
+        return filter_list
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logging.error("Error processing tag %s: %s", tag_id, e)
+        tag_cache[tag_id] = None
+        return None
+
+
+def _extract_item_value(item):
+    """Safely flattens and extracts property value from a filter item dictionary."""
+    value = item.get('value')
+    if isinstance(value, list) and value:
+        try:
+            return value[0][0] if isinstance(value[0], list) else value[0]
+        except (IndexError, TypeError):
+            return None
+    return value
+
+
+def _process_scan_tag(io_client, scan_info, tag_id, tag_cache, cache_stats):
+    """Processes tag filters for a given scan and tag ID, returning list of extracted items."""
+    filter_list = _get_tag_filters(io_client, tag_id, tag_cache, cache_stats)
+    if not filter_list:
+        return []
+
+    scan_id, scan_name = scan_info
+    items = []
+    for item in filter_list:
+        items.append({
+            'scan_id': scan_id,
+            'scan_name': scan_name,
+            'tag_id': tag_id,
+            'property': item.get('property'),
+            'value': _extract_item_value(item)
+        })
+    return items
+
+
+def extract_scan_ip_networks(io_client=None):
+    """
+    Extracts IP network information from all scans via their tag targets.
+
+    Args:
+        io_client: Optional TenableIO client instance.
+
+    Returns:
+        tuple: (pandas DataFrame, cache stats dictionary)
+    """
+    if io_client is None:
+        io_client = _init_client()
+
+    scans = io_client.scans.list()
+    all_extracted_data = []
+    tag_cache = {}
+    cache_stats = {'hits': 0, 'misses': 0}
+
+    for scan in scans:
+        scan_id = scan.get('id')
+        scan_name = scan.get('name')
+
+        try:
+            scan_details = io_client.scans.details(scan_id)
+            settings = scan_details.get('settings') if isinstance(scan_details, dict) else None
+            tag_targets = settings.get('tag_targets') if settings else None
+
+            if not tag_targets:
+                logging.info("No tag_targets found for scan id %s. Skipping.", scan_id)
                 continue
 
-    except Exception as e:
-        logging.error(f"Error processing scan {scan_id}: {e}")
-        continue
+            for t in tag_targets:
+                items = _process_scan_tag(
+                    io_client, (scan_id, scan_name), t, tag_cache, cache_stats
+                )
+                all_extracted_data.extend(items)
 
-# Create the DataFrame from the collected list of dictionaries
-df = pd.DataFrame(all_extracted_data)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logging.error("Error processing scan %s: %s", scan_id, e)
+            continue
 
-with open('TENABLE-SCAN-TARGETS.md', 'w') as f:
-    f.write(f'# Tenable Scans & Their Subnets\n\n')
-    f.write('## Scan Target Networks\n\n')
-    f.write(df.to_markdown(tablefmt='github'))
-    f.write('\n\n')
-    f.write('## Summary Statistics\n\n')
-    f.write('### Scan ID Summary\n\n')
-    f.write(df['scan_id'].astype(str).describe().to_markdown(tablefmt='github'))
-    f.write('\n\n')
-    f.write('### Scan Name Summary\n\n')
-    f.write(df['scan_name'].describe().to_markdown(tablefmt='github'))
-    f.write('\n\n')
-    f.write('### IP Subnets Summary\n\n')
-    f.write(df['value'].describe().to_markdown(tablefmt='github'))
-    f.write('\n\n')
+    logging.info(
+        "Tag cache stats - Hits: %d, Misses: %d", cache_stats['hits'], cache_stats['misses']
+    )
+    df = pd.DataFrame(all_extracted_data)
+    return df, cache_stats
+
+
+def generate_report(df, output_filepath='TENABLE-SCAN-TARGETS.md'):
+    """Generates a markdown report from the scan targets DataFrame."""
+    with open(output_filepath, 'w', encoding='utf-8') as f:
+        f.write('# Tenable Scans & Their Subnets\n\n')
+        f.write('## Scan Target Networks\n\n')
+        f.write(df.to_markdown(tablefmt='github'))
+        f.write('\n\n')
+        f.write('## Summary Statistics\n\n')
+        f.write('### Scan ID Summary\n\n')
+        if 'scan_id' in df.columns and not df.empty:
+            f.write(df['scan_id'].astype(str).describe().to_markdown(tablefmt='github'))
+        f.write('\n\n')
+        f.write('### Scan Name Summary\n\n')
+        if 'scan_name' in df.columns and not df.empty:
+            f.write(df['scan_name'].describe().to_markdown(tablefmt='github'))
+        f.write('\n\n')
+        f.write('### IP Subnets Summary\n\n')
+        if 'value' in df.columns and not df.empty:
+            f.write(df['value'].describe().to_markdown(tablefmt='github'))
+        f.write('\n\n')
+
+
+def main():
+    """Main execution entry point."""
+    df, _ = extract_scan_ip_networks()
+    generate_report(df)
+
+
+if __name__ == '__main__':
+    main()
