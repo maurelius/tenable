@@ -23,17 +23,18 @@ Render examples:
   dot  -Tsvg tenable_io_architecture.dot -o tenable_io_architecture.svg
 """
 
-from tenable.io import TenableIO
+import hashlib
+import html
 import json
-import os
 import logging
 import re
-from restfly.errors import NotFoundError
-from tqdm import tqdm
 import time
-import html
+from restfly.errors import NotFoundError
+from tenable.io import TenableIO
+from tqdm import tqdm
 
-# Note: The above imports assume you have pytenable installed and properly configured with your Tenable.io credentials.
+# Note: The above imports assume you have pytenable installed
+# and properly configured with your Tenable.io credentials.
 
 # ---------------------------
 # Tenable.io client
@@ -54,11 +55,18 @@ def get_scan_details(scan_id):
             return io.scans.details(scan_id=scan_id)
         except NotFoundError:
             if attempt < max_retries - 1:
-                logging.warning(f"Scan ID {scan_id} not found. Retrying in {delay_seconds} seconds...")
+                logging.warning(
+                    "Scan ID %s not found. Retrying in %d seconds...",
+                    scan_id, delay_seconds
+                )
                 time.sleep(delay_seconds)
             else:
-                logging.error(f"Scan ID {scan_id} not found after {max_retries} attempts.")
+                logging.error(
+                    "Scan ID %s not found after %d attempts.",
+                    scan_id, max_retries
+                )
                 raise
+    return None
 
 # Correct UUID pattern (Tenable returns lowercase hex by default)
 UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
@@ -108,24 +116,27 @@ def normalize_tag_value_uuid(raw):
 def parse_asset_filters(filters, tag_id):
     """Return a list of AND filters from filters['asset'], handling JSON string or dict."""
     if not filters or 'asset' not in filters:
-        logging.info(f"No asset filters found for tag {tag_id}. Skipping.")
+        logging.info("No asset filters found for tag %s. Skipping.", tag_id)
         return None
     asset = filters['asset']
     if isinstance(asset, str):
         try:
             asset_data = json.loads(asset)
         except json.JSONDecodeError as e:
-            logging.warning(f"Invalid JSON in filters['asset'] for tag {tag_id}: {e}")
+            logging.warning("Invalid JSON in filters['asset'] for tag %s: %s", tag_id, e)
             return None
     elif isinstance(asset, dict):
         asset_data = asset
     else:
-        logging.warning(f"Unexpected type for filters['asset'] in tag {tag_id}: {type(asset).__name__}")
+        logging.warning(
+            "Unexpected type for filters['asset'] in tag %s: %s",
+            tag_id, type(asset).__name__
+        )
         return None
 
     filter_list = asset_data.get('and', [])
     if not filter_list:
-        logging.info(f"No 'and' filters found for tag {tag_id}. Skipping.")
+        logging.info("No 'and' filters found for tag %s. Skipping.", tag_id)
         return None
     return filter_list
 
@@ -151,10 +162,14 @@ def get_tag_targets():
     dropped_items_invalid = 0
 
     print("Getting tag UUIDs for scan count: ", len(scans), "\n")
+    bar_fmt = (
+        "{l_bar}{bar} {n_fmt}/{total_fmt} "
+        "[Elapsed: {elapsed} - Remaining: {remaining}, {rate_fmt}]"
+    )
     for scan in tqdm(
         scans,
         desc="Processing scans",
-        bar_format="{l_bar}{bar} {n_fmt}/{total_fmt} [Elapsed: {elapsed} - Remaining: {remaining}, {rate_fmt}]",
+        bar_format=bar_fmt,
         ncols=100
     ):
         scan_id = scan.get('id')
@@ -168,7 +183,10 @@ def get_tag_targets():
 
         # Guard against None or unexpected responses
         if not isinstance(scan_details, dict):
-            logging.error(f"Scan {scan_id}: details payload is None or not a dict; skipping.")
+            logging.error(
+                "Scan %s: details payload is None or not a dict; skipping.",
+                scan_id
+            )
             continue
 
         # SAFE accessors from here on
@@ -197,7 +215,7 @@ def get_tag_targets():
                 normalized.append(u)
             else:
                 dropped_items_invalid += 1
-                logging.debug(f"Scan {scan_id}: dropping malformed tag target {x!r}")
+                logging.debug("Scan %s: dropping malformed tag target %r", scan_id, x)
 
         if not normalized:
             dropped_all_invalid += 1
@@ -210,7 +228,8 @@ def get_tag_targets():
         }
 
     logging.info(
-        "Tag targets summary — kept scans: %d | dropped(empty): %d | dropped(all invalid): %d | dropped(invalid items): %d",
+        "Tag targets summary — kept scans: %d | dropped(empty): %d | "
+        "dropped(all invalid): %d | dropped(invalid items): %d",
         len(kept), dropped_empty, dropped_all_invalid, dropped_items_invalid
     )
     return kept
@@ -221,10 +240,91 @@ tag_targets = get_tag_targets()
 # Phase 2: Resolve tag values & filters and emit rows carrying scan metadata
 # ---------------------------
 
-def collect_tag_filters_and_value(io, tag_targets):
+def _resolve_tag_details_cached(tio_client, tag_uuid, tag_cache, cache_stats):
+    """
+    Retrieves and caches parsed tag details (value and filters) for a given tag_uuid.
+    Returns (tag_value, filter_list) or None if details cannot be retrieved.
+    """
+    if tag_uuid in tag_cache:
+        cache_stats['hits'] += 1
+        return tag_cache[tag_uuid]
+
+    cache_stats['misses'] += 1
+    tags = tio_client.tags.details(tag_uuid)
+    tag_value = tags.get("value")
+    if not tag_value:
+        logging.info("No 'value' found for tag value UUID %s. Skipping.", tag_uuid)
+        tag_cache[tag_uuid] = None
+        return None
+
+    filters = tags.get("filters")
+    filter_list = parse_asset_filters(filters, tag_uuid)
+    if not filter_list:
+        tag_cache[tag_uuid] = None
+        return None
+
+    res = (tag_value, filter_list)
+    tag_cache[tag_uuid] = res
+    return res
+
+
+def _build_scan_row(scan_meta, tag_uuid, tag_details):
+    """Constructs a single scan result dictionary from scan metadata and tag details."""
+    scan_id, scan_name, scanner_name = scan_meta
+    tag_value, filter_list = tag_details
+    return {
+        "scan_id": scan_id,
+        "scan_name": scan_name,
+        "scanner_name": scanner_name,
+        "tag_value_uuid": tag_uuid,
+        "value": tag_value,
+        "filters": filter_list
+    }
+
+
+def _process_scan_tag_uuids(scan_info, tio_client, tag_cache, cache_stats):
+    """Helper to process tag UUIDs for a single scan and return result rows."""
+    scan_id, meta = scan_info
+    if not isinstance(meta, dict):
+        logging.error(
+            "Scan %s: unexpected tag_targets meta type %s; skipping.",
+            scan_id, type(meta).__name__
+        )
+        return []
+
+    scan_meta = (
+        scan_id,
+        meta.get("scan_name") or f"Scan {scan_id}",
+        meta.get("scanner_name") or "Unknown Scanner/Group"
+    )
+    scan_rows = []
+
+    for raw_t in meta.get("uuids") or []:
+        try:
+            t = normalize_tag_value_uuid(raw_t)
+            tag_details = _resolve_tag_details_cached(
+                tio_client, t, tag_cache, cache_stats
+            )
+            if tag_details:
+                scan_rows.append(_build_scan_row(scan_meta, t, tag_details))
+
+        except ValueError as ve:
+            logging.error("Error processing tag %r: %s", raw_t, ve)
+            continue
+        except NotFoundError as nf:
+            logging.error("Error processing tag %s: %s", raw_t, nf)
+            continue
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logging.error("Unexpected error processing tag %r: %s", raw_t, e)
+            continue
+
+    return scan_rows
+
+
+def collect_tag_filters_and_value(tio_client, targets):
     """
     Iterate tag_targets and collect parsed asset filters AND the tag 'value' (singular)
-    for each tag value UUID.
+    for each tag value UUID with dictionary-based caching.
 
     Returns a flat list of dicts, each row carrying scan metadata:
       [
@@ -240,48 +340,19 @@ def collect_tag_filters_and_value(io, tag_targets):
       ]
     """
     results = []
-    for scan_id, meta in tag_targets.items():
-        if not isinstance(meta, dict):
-            logging.error(f"Scan {scan_id}: unexpected tag_targets meta type {type(meta).__name__}; skipping.")
-            continue
+    tag_cache = {}
+    cache_stats = {'hits': 0, 'misses': 0}
 
-        uuids = meta.get("uuids") or []
-        scan_name = meta.get("scan_name") or f"Scan {scan_id}"
-        scanner_name = meta.get("scanner_name") or "Unknown Scanner/Group"
+    for scan_id, meta in targets.items():
+        scan_rows = _process_scan_tag_uuids(
+            (scan_id, meta), tio_client, tag_cache, cache_stats
+        )
+        results.extend(scan_rows)
 
-        for raw_t in uuids:
-            try:
-                t = normalize_tag_value_uuid(raw_t)
-                tags = io.tags.details(t)
-                tag_value = tags.get("value")
-                if not tag_value:
-                    logging.info(f"No 'value' found for tag value UUID {t}. Skipping.")
-                    continue
-
-                filters = tags.get("filters")
-                filter_list = parse_asset_filters(filters, t)
-                if not filter_list:
-                    # parse_asset_filters already logged why
-                    continue
-
-                results.append({
-                    "scan_id": scan_id,
-                    "scan_name": scan_name,
-                    "scanner_name": scanner_name,
-                    "tag_value_uuid": t,
-                    "value": tag_value,
-                    "filters": filter_list
-                })
-
-            except ValueError as ve:
-                logging.error(f"Error processing tag {raw_t!r}: {ve}")
-                continue
-            except NotFoundError as nf:
-                logging.error(f"Error processing tag {raw_t}: {nf}")
-                continue
-            except Exception as e:
-                logging.error(f"Unexpected error processing tag {raw_t!r}: {e}")
-                continue
+    logging.info(
+        "Tag details lookup complete — Hits: %d | Misses: %d | Unique Cached: %d",
+        cache_stats['hits'], cache_stats['misses'], len(tag_cache)
+    )
     return results
 
 tag_filters_and_values = collect_tag_filters_and_value(io, tag_targets)
@@ -295,7 +366,6 @@ def _sanitize_id(s: str) -> str:
     Make a deterministic Graphviz-safe ID from an arbitrary string.
     We keep alnum and replace others with underscores; prefix if startswith digit.
     """
-    import hashlib
     # keep readable portion but ensure uniqueness by hashing suffix
     base = re.sub(r'[^A-Za-z0-9_]', '_', s or "node")
     if re.match(r'^\d', base):
@@ -313,17 +383,19 @@ def _filters_to_subnet_hints(filters) -> list:
     """
     cidrs = []
     cidr_re = re.compile(r'^\s*\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\s*$')
+
     def add_cidr(x):
         if isinstance(x, str) and cidr_re.match(x):
             cidrs.append(x.strip())
 
-    for f in filters or []:
+    for flt in filters or []:
         # Common containers
         for key in ('value', 'values'):
-            if key in f:
-                val = f[key]
+            if key in flt:
+                val = flt[key]
                 if isinstance(val, list):
-                    for item in val: add_cidr(item)
+                    for item in val:
+                        add_cidr(item)
                 else:
                     add_cidr(val)
     # de-dup preserve order
@@ -331,82 +403,94 @@ def _filters_to_subnet_hints(filters) -> list:
     uniq = []
     for c in cidrs:
         if c not in seen:
-            uniq.append(c); seen.add(c)
+            uniq.append(c)
+            seen.add(c)
     return uniq
+
+def _format_tag_node(tag_uuid, tag_value, filters):
+    """Formats tag node string and label for DOT rendering."""
+    subnets = _filters_to_subnet_hints(filters)
+    lines_lbl = [html.escape(str(tag_value))]
+    if subnets:
+        preview = ", ".join(subnets[:4]) + ("…" if len(subnets) > 4 else "")
+        lines_lbl.append(html.escape(f"Subnets: {preview}"))
+    tag_label = "\\n".join(lines_lbl)
+
+    tag_node_id = _sanitize_id(f"tag::{tag_uuid}::{tag_value}")
+    tooltip = html.escape(f"Tag UUID: {tag_uuid}")
+    node_str = (
+        f'    "{tag_node_id}" [label="{tag_label}", shape=note, '
+        f'fillcolor="#FFF7E6", tooltip="{tooltip}"];'
+    )
+    return tag_node_id, node_str
+
+
+def _build_scan_subgraph(scanner_name, scan_name, tag_rows):
+    """Builds DOT lines for a single scan and its connected tag nodes."""
+    lines = []
+    scan_node_id = _sanitize_id(f"scan::{scanner_name}::{scan_name}")
+    scan_lbl = html.escape(scan_name)
+    lines.append(f'    "{scan_node_id}" [label="{scan_lbl}", fillcolor="#E8F0FE"];')
+
+    for r in tag_rows:
+        tag_uuid = r.get("tag_value_uuid")
+        tag_value = r.get("value") or tag_uuid
+        tag_node_id, node_str = _format_tag_node(
+            tag_uuid, tag_value, r.get("filters")
+        )
+        lines.append(node_str)
+        lines.append(f'    "{scan_node_id}" -> "{tag_node_id}";')
+
+    return lines
+
 
 def write_graphviz_dot(rows, dot_path="tenable_io_architecture.dot"):
     """
     rows: list of dicts from tag_filters_and_values
-    Writes a DOT file with:
-      - cluster per scanner_name
-      - scan nodes inside cluster
-      - tag nodes connected to their scans
-      - node tooltips with extra context
+    Writes a DOT file with clusters per scanner and connected tag nodes.
     """
-    # Group rows by scanner -> scan
     by_scanner = {}
     for r in rows:
         scanner = r.get("scanner_name") or "Unknown Scanner/Group"
         scan = r.get("scan_name") or f"Scan {r.get('scan_id')}"
         by_scanner.setdefault(scanner, {}).setdefault(scan, []).append(r)
 
-    lines = []
-    lines.append('digraph TenableScannerArchitecture {')
-    lines.append('  rankdir=LR;')
-    lines.append('  graph [fontname="Segoe UI", fontsize=10, labelloc=top];')
-    lines.append('  node  [fontname="Segoe UI", fontsize=9, shape=box, style="rounded,filled", fillcolor="#F3F6FB"];')
-    lines.append('  edge  [fontname="Segoe UI", fontsize=8, color="#6A7D9B"];')
+    lines = [
+        'digraph TenableScannerArchitecture {',
+        '  rankdir=LR;',
+        '  graph [fontname="Segoe UI", fontsize=10, labelloc=top];',
+        '  node  [fontname="Segoe UI", fontsize=9, shape=box, '
+        'style="rounded,filled", fillcolor="#F3F6FB"];',
+        '  edge  [fontname="Segoe UI", fontsize=8, color="#6A7D9B"];'
+    ]
 
     for scanner_name, scans_map in sorted(by_scanner.items(), key=lambda kv: kv[0].lower()):
         cluster_id = _sanitize_id(f"cluster_{scanner_name}")
-        # Escape for label rendering
         scanner_lbl = html.escape(scanner_name)
         lines.append(f'  subgraph cluster_{cluster_id} {{')
         lines.append('    style="rounded"; color="#C7D3E3";')
         lines.append(f'    label=<<b>Scanner/Group:</b> {scanner_lbl}>;')
 
-        # Create scan nodes and tag nodes
         for scan_name, tag_rows in sorted(scans_map.items(), key=lambda kv: kv[0].lower()):
-            scan_node_id = _sanitize_id(f"scan::{scanner_name}::{scan_name}")
-            scan_lbl = html.escape(scan_name)
-            lines.append(f'    "{scan_node_id}" [label="{scan_lbl}", fillcolor="#E8F0FE"];')
+            scan_lines = _build_scan_subgraph(scanner_name, scan_name, tag_rows)
+            lines.extend(scan_lines)
 
-            # For each tag row, create a tag node and edge
-            for r in tag_rows:
-                tag_uuid = r.get("tag_value_uuid")
-                tag_value = r.get("value") or tag_uuid
-                subnets = _filters_to_subnet_hints(r.get("filters"))
-                # Build multi-line label with optional CIDR hints
-                lines_lbl = [html.escape(str(tag_value))]
-                if subnets:
-                    # limit display to first 4 to avoid very wide nodes
-                    preview = ", ".join(subnets[:4]) + ("…" if len(subnets) > 4 else "")
-                    lines_lbl.append(html.escape(f"Subnets: {preview}"))
-                tag_label = "\\n".join(lines_lbl)
-
-                tag_node_id = _sanitize_id(f"tag::{tag_uuid}::{tag_value}")
-                tooltip = html.escape(f"Tag UUID: {tag_uuid}")
-                lines.append(
-                    f'    "{tag_node_id}" [label="{tag_label}", shape=note, fillcolor="#FFF7E6", tooltip="{tooltip}"];'
-                )
-                lines.append(f'    "{scan_node_id}" -> "{tag_node_id}";')
-
-        lines.append('  }')  # end cluster
+        lines.append('  }')
     lines.append('}')
 
-    with open(dot_path, 'w', encoding='utf-8') as f:
-        f.write("\n".join(lines))
+    with open(dot_path, 'w', encoding='utf-8') as out_f:
+        out_f.write("\n".join(lines))
 
     print(f"Graphviz DOT written to {dot_path}")
 
 # ---------------------------
 # Output (JSON + DOT)
 # ---------------------------
-output_file = "tenable_io_tag_filters_and_values.json"
-with open(output_file, "w") as f:
-    json.dump(tag_filters_and_values, f, indent=4)
+OUTPUT_FILE = "tenable_io_tag_filters_and_values.json"
+with open(OUTPUT_FILE, "w", encoding="utf-8") as out_file:
+    json.dump(tag_filters_and_values, out_file, indent=4)
 
-print(f"Tag filters and values written to {output_file}")
+print(f"Tag filters and values written to {OUTPUT_FILE}")
 
 # Emit Graphviz DOT
 write_graphviz_dot(tag_filters_and_values, dot_path="tenable_io_architecture.dot")
