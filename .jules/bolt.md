@@ -29,3 +29,8 @@
 
 **Learning:** A buggy or incomplete cache logic can bypass the cache entirely, perform redundant network lookups, and hide silent bugs like NameErrors. Standardizing cache tracking via structured stats dictionaries (`{"hits": 0, "misses": 0}`) and encapsulating cache logic within a standalone, focused helper function improves code clarity, maintains a 10/10 pylint rating, and guarantees precise performance instrumentation.
 **Action:** Always construct a focused cache resolution helper function (e.g., `_resolve_resource_with_cache(...)`) to encapsulate the hit/miss logic and maintain clean high-level iterator loops.
+
+## 2026-07-07 - Hoisting Parent Metadata Lookups Outside History Loops
+
+**Learning:** Calling `io.scans.details(scan_id)` inside a loop iterating over `io.scans.history(scan_id)` results in $O(N)$ redundant network requests fetching unchanged scan metadata. Hoisting the `io.scans.details()` API call outside the loop reduces network calls to $O(1)$ and speeds up history processing.
+**Action:** Inspect loops that iterate over historical or child items to ensure parent object details/metadata calls are hoisted before loop entry.
