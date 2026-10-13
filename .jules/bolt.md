@@ -20,7 +20,7 @@
 **Learning:** In scripts that resolve scan-related resources (like tags), many scans frequently share the same resource references. Implementing a dictionary-based cache for these resources reduces API overhead from O(Total References) to O(Unique Resources), significantly improving execution time in large environments.
 **Action:** Implement a cache for nested API lookups when processing lists of items that likely share common configuration elements.
 
-## 2026-07-05 - Bulk Asset Export for Tag Retrieval
+## 2025-07-05 - Bulk Asset Export for Tag Retrieval
 
 **Learning:** Sequential `io.assets.tags()` calls for every asset retrieved via `io.assets.list()` creates an O(N) network bottleneck. Replacing this with `io.exports.assets()` reduces overhead to O(1) export job, as the Export API includes tags in the asset record payload.
 **Action:** Use bulk Export APIs instead of sequential lookup methods whenever processing attributes (like tags) across a large set of assets.
@@ -29,3 +29,8 @@
 
 **Learning:** A buggy or incomplete cache logic can bypass the cache entirely, perform redundant network lookups, and hide silent bugs like NameErrors. Standardizing cache tracking via structured stats dictionaries (`{"hits": 0, "misses": 0}`) and encapsulating cache logic within a standalone, focused helper function improves code clarity, maintains a 10/10 pylint rating, and guarantees precise performance instrumentation.
 **Action:** Always construct a focused cache resolution helper function (e.g., `_resolve_resource_with_cache(...)`) to encapsulate the hit/miss logic and maintain clean high-level iterator loops.
+
+## 2026-07-07 - Hoisting Parent Metadata Lookups Outside Child Iteration Loops
+
+**Learning:** In `tenable_io_scan_elapsed.py`, calling `io.scans.details(scan_id)` inside the `io.scans.history(scan_id)` loop caused $O(N)$ redundant network requests for unchanged scan metadata (like scan name) across $N$ historical runs. Hoisting the call outside the loop reduces network overhead to $O(1)$.
+**Action:** Check loops over historical records or child objects for static parent metadata lookups and hoist them before the loop.
