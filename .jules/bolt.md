@@ -29,3 +29,8 @@
 
 **Learning:** A buggy or incomplete cache logic can bypass the cache entirely, perform redundant network lookups, and hide silent bugs like NameErrors. Standardizing cache tracking via structured stats dictionaries (`{"hits": 0, "misses": 0}`) and encapsulating cache logic within a standalone, focused helper function improves code clarity, maintains a 10/10 pylint rating, and guarantees precise performance instrumentation.
 **Action:** Always construct a focused cache resolution helper function (e.g., `_resolve_resource_with_cache(...)`) to encapsulate the hit/miss logic and maintain clean high-level iterator loops.
+
+## 2026-07-07 - Hoisting Parent Scan Metadata Lookups Outside History Iteration
+
+**Learning:** In `tenable_io_scan_elapsed.py`, `io.scans.details(scan_id)` was called inside a loop iterating over `io.scans.history(scan_id)` to get the scan name. For a scan with $N$ history entries, this resulted in $N$ redundant API calls to fetch static scan details. Hoisting `io.scans.details(scan_id)` outside the loop reduces network API requests from $O(N)$ to $O(1)$.
+**Action:** Always check if metadata lookups inside iteration loops return static properties for the parent resource, and hoist them outside the loop prior to iterating over child entries.
