@@ -1,5 +1,10 @@
 # Bolt Changelog
 
+## 2026-07-07 - Deduplication and Caching for Scan Template Details
+
+**Learning:** In `tenable_io_get_scan_templates_by_plugin_id.py`, `pandas.DataFrame` was instantiated solely to deduplicate `wizard_uuid` strings, and repeated `io.editor.template_details` calls were made for overlapping template UUIDs between scans and policy template lists. Replacing `pandas` with Python set comprehension eliminates unnecessary DataFrame overhead, and caching `template_details` in a dictionary reduces network API requests from O(N_scans + N_templates) to O(Unique Templates).
+**Action:** Use Python set comprehensions instead of pandas DataFrames when deduplicating simple primitive attributes, and cache resource details when lookups span multiple iterations across separate resource collections.
+
 ## 2026-06-21 - Batching pyTenable Scan Configurations
 
 **Learning:** The `io.scans.configure` method in pyTenable allows updating both `credentials` and `acls` in a single call. In `tenable_io_scan_update_permissions.py`, credentials were being added one-by-one in a loop, followed by a separate call for permissions. This resulted in O(N*M) network calls where N is the number of scans and M is the number of credentials. By batching them, we reduce this to O(N).
