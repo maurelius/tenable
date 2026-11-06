@@ -1,5 +1,10 @@
 # Bolt Changelog
 
+## 2026-07-08 - Hoisting Parent Scan Metadata Lookups Outside History Loops
+
+**Learning:** In `tenable_io_scan_elapsed.py`, `io.scans.details(scan_id)` was called inside the `for scan in io.scans.history(scan_id):` iteration loop solely to retrieve the scan's display name. For scans with $N$ history runs, this issued $O(N)$ redundant network requests for unchanged scan configuration details. Hoisting the call outside the history loop reduces network requests to $O(1)$.
+**Action:** When iterating over history or child sub-resources belonging to a single parent entity, extract parent metadata once before the loop rather than repeatedly fetching it during iteration.
+
 ## 2026-07-07 - Deduplication and Caching for Scan Template Details
 
 **Learning:** In `tenable_io_get_scan_templates_by_plugin_id.py`, `pandas.DataFrame` was instantiated solely to deduplicate `wizard_uuid` strings, and repeated `io.editor.template_details` calls were made for overlapping template UUIDs between scans and policy template lists. Replacing `pandas` with Python set comprehension eliminates unnecessary DataFrame overhead, and caching `template_details` in a dictionary reduces network API requests from O(N_scans + N_templates) to O(Unique Templates).
