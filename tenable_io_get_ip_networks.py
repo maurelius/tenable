@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''
+"""
 Tenable.io - Get IP Networks from Scan Tags
 
 Description:
