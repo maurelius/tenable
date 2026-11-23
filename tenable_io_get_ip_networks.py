@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''
+"""
 Tenable.io - Get IP Networks from Scan Tags
 
 Description:
@@ -22,16 +22,12 @@ import json
 import logging
 import pandas as pd
 
-# Note: The above imports assume you have pytenable installed and properly configured with your Tenable.io credentials.
 
 # ⚡ BOLT Optimization: Use consistent client initialization and logging level
 logging.basicConfig(level=logging.INFO)
 io = get_tenable_io_client()
 scans = io.scans.list()
 
-# --- Processing Logic (Fixed) ---
-# Initialize an empty list to store the data for the DataFrame
-all_extracted_data = []
 
 # ⚡ BOLT Optimization: Cache tag details to avoid redundant API calls
 tag_cache = {}
@@ -44,10 +40,10 @@ for scan in scans:
     scan_name = scan['name']
     
     try:
-        scan_details = io.scans.details(scan_id)
-        settings = scan_details.get('settings')
-        tag_targets = settings.get('tag_targets') if settings else None
-        
+        scan_details = tio_client.scans.details(scan_id)
+        settings = scan_details.get("settings") if scan_details else None
+        tag_targets = settings.get("tag_targets") if settings else None
+
         if not tag_targets:
             logging.info(f"No tag_targets found for scan id {scan_id}. Skipping.")
             continue

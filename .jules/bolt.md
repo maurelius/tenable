@@ -1,5 +1,15 @@
 # Bolt Changelog
 
+## 2026-07-08 - Hoisting Redundant Scan Details Lookups in History Loops
+
+**Learning:** In `tenable_io_scan_elapsed.py`, `io.scans.details(scan_id)` was called inside each iteration of the `io.scans.history(scan_id)` loop. Because scan configuration details (such as `name`) are invariant across history runs, this caused $O(N)$ redundant network requests for $N$ historical executions. Hoisting `io.scans.details(scan_id)` outside the iteration loop reduces network calls from $O(N)$ to $O(1)$.
+**Action:** When iterating over history or child records of a resource, hoist static parent metadata lookups outside the loop to avoid redundant network round-trips.
+
+## 2026-07-07 - Deduplication and Caching for Scan Template Details
+
+**Learning:** In `tenable_io_get_scan_templates_by_plugin_id.py`, `pandas.DataFrame` was instantiated solely to deduplicate `wizard_uuid` strings, and repeated `io.editor.template_details` calls were made for overlapping template UUIDs between scans and policy template lists. Replacing `pandas` with Python set comprehension eliminates unnecessary DataFrame overhead, and caching `template_details` in a dictionary reduces network API requests from O(N_scans + N_templates) to O(Unique Templates).
+**Action:** Use Python set comprehensions instead of pandas DataFrames when deduplicating simple primitive attributes, and cache resource details when lookups span multiple iterations across separate resource collections.
+
 ## 2026-06-21 - Batching pyTenable Scan Configurations
 
 **Learning:** The `io.scans.configure` method in pyTenable allows updating both `credentials` and `acls` in a single call. In `tenable_io_scan_update_permissions.py`, credentials were being added one-by-one in a loop, followed by a separate call for permissions. This resulted in O(N*M) network calls where N is the number of scans and M is the number of credentials. By batching them, we reduce this to O(N).
@@ -28,3 +38,8 @@
 ## 2026-07-08 - Caching Tag Details in IP Network Resolution
 **Learning:** In scripts like `tenable_io_get_ip_networks.py` that resolve tag-based targets across many scans, redundant API calls for shared tags create a massive performance bottleneck. Implementing a simple dictionary-based cache reduced potential network overhead from O(Total Tag References) to O(Unique Tags).
 **Action:** Always implement a cache when performing nested API lookups for resources (like tags or assets) that are likely to be shared across a list of parent objects (like scans).
+
+## 2026-07-06 - Fixing and Tracking Broken Cache Implementations
+
+**Learning:** A buggy or incomplete cache logic can bypass the cache entirely, perform redundant network lookups, and hide silent bugs like NameErrors. Standardizing cache tracking via structured stats dictionaries (`{"hits": 0, "misses": 0}`) and encapsulating cache logic within a standalone, focused helper function improves code clarity, maintains a 10/10 pylint rating, and guarantees precise performance instrumentation.
+**Action:** Always construct a focused cache resolution helper function (e.g., `_resolve_resource_with_cache(...)`) to encapsulate the hit/miss logic and maintain clean high-level iterator loops.

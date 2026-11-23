@@ -221,9 +221,39 @@ tag_targets = get_tag_targets()
 # Phase 2: Resolve tag values & filters and emit rows carrying scan metadata
 # ---------------------------
 
-def collect_tag_filters_and_value(io, tag_targets):
+def _resolve_tag_details_with_normalized(io_client, t, tag_cache, stats):
     """
-    Iterate tag_targets and collect parsed asset filters AND the tag 'value' (singular)
+    Resolves tag details (value and filters) for a given UUID, using and updating the cache.
+    Updates stats tracking hits and misses.
+    """
+    if t in tag_cache:
+        stats["hits"] += 1
+        return tag_cache[t]
+
+    stats["misses"] += 1
+    tags = io_client.tags.details(t)
+    tag_value = tags.get("value")
+    if not tag_value:
+        logging.info("No 'value' found for tag value UUID %s. Skipping.", t)
+        tag_cache[t] = None
+        return None
+
+    filters = tags.get("filters")
+    filter_list = parse_asset_filters(filters, t)
+    if not filter_list:
+        tag_cache[t] = None
+        return None
+
+    tag_cache[t] = {
+        "value": tag_value,
+        "filters": filter_list
+    }
+    return tag_cache[t]
+
+
+def collect_tag_filters_and_value(io_client, target_map):
+    """
+    Iterate target_map and collect parsed asset filters AND the tag 'value' (singular)
     for each tag value UUID.
 
     Returns a flat list of dicts, each row carrying scan metadata:
@@ -240,48 +270,43 @@ def collect_tag_filters_and_value(io, tag_targets):
       ]
     """
     results = []
-    for scan_id, meta in tag_targets.items():
+    tag_cache = {}  # ⚡ BOLT: Cache tag details to avoid redundant API calls
+    stats = {"hits": 0, "misses": 0}
+
+    for scan_id, meta in target_map.items():
         if not isinstance(meta, dict):
-            logging.error(f"Scan {scan_id}: unexpected tag_targets meta type {type(meta).__name__}; skipping.")
+            logging.error("Scan %s: unexpected tag_targets meta type %s; skipping.",
+                          scan_id, type(meta).__name__)
             continue
 
-        uuids = meta.get("uuids") or []
-        scan_name = meta.get("scan_name") or f"Scan {scan_id}"
-        scanner_name = meta.get("scanner_name") or "Unknown Scanner/Group"
-
-        for raw_t in uuids:
+        for raw_t in meta.get("uuids") or []:
             try:
                 t = normalize_tag_value_uuid(raw_t)
-                tags = io.tags.details(t)
-                tag_value = tags.get("value")
-                if not tag_value:
-                    logging.info(f"No 'value' found for tag value UUID {t}. Skipping.")
-                    continue
-
-                filters = tags.get("filters")
-                filter_list = parse_asset_filters(filters, t)
-                if not filter_list:
-                    # parse_asset_filters already logged why
+                cached_tag = _resolve_tag_details_with_normalized(io_client, t, tag_cache, stats)
+                if cached_tag is None:
                     continue
 
                 results.append({
                     "scan_id": scan_id,
-                    "scan_name": scan_name,
-                    "scanner_name": scanner_name,
+                    "scan_name": meta.get("scan_name") or f"Scan {scan_id}",
+                    "scanner_name": meta.get("scanner_name") or "Unknown Scanner/Group",
                     "tag_value_uuid": t,
-                    "value": tag_value,
-                    "filters": filter_list
+                    "value": cached_tag["value"],
+                    "filters": cached_tag["filters"]
                 })
 
             except ValueError as ve:
-                logging.error(f"Error processing tag {raw_t!r}: {ve}")
+                logging.error("Error processing tag %r: %s", raw_t, ve)
                 continue
             except NotFoundError as nf:
-                logging.error(f"Error processing tag {raw_t}: {nf}")
+                logging.error("Error processing tag %s: %s", raw_t, nf)
                 continue
-            except Exception as e:
-                logging.error(f"Unexpected error processing tag {raw_t!r}: {e}")
+            except Exception as e:  # pylint: disable=broad-except
+                logging.error("Unexpected error processing tag %r: %s", raw_t, e)
                 continue
+
+    logging.info("Tag resolution stats: Cache Hits: %s, Cache Misses: %s",
+                 stats["hits"], stats["misses"])
     return results
 
 tag_filters_and_values = collect_tag_filters_and_value(io, tag_targets)

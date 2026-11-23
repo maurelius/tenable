@@ -8,6 +8,9 @@ logging.basicConfig(level=logging.CRITICAL)
 # Mocking the imports before they are used in the script
 with patch('tenable.io.TenableIO'), patch('tenable_config.get_tenable_io_client'):
     from tenable_io_get_scans_from_tag import collect_tag_filters_and_value
+    from tenable_io_diagram_scanner_architecture import (
+        collect_tag_filters_and_value as collect_tag_architecture,
+    )
 
 class TestTagCaching(unittest.TestCase):
     def test_collect_tag_filters_and_value_caching(self):
@@ -52,6 +55,49 @@ class TestTagCaching(unittest.TestCase):
         for res in results:
             self.assertEqual(res['tag_value_uuid'], tag_uuid)
             self.assertEqual(res['value'], "Test Tag")
+
+    def test_collect_tag_filters_and_value_caching_architecture(self):
+        mock_io = MagicMock()
+
+        # Define a common tag UUID
+        tag_uuid = "00000000-0000-0000-0000-000000000000"
+
+        # Mock response for io.tags.details
+        mock_tag_details = {
+            "value": "Arch Tag",
+            "filters": {
+                "asset": '{"and": [{"property": "ip", "operator": "eq", "value": "10.0.0.1"}]}'
+            }
+        }
+        mock_io.tags.details.return_value = mock_tag_details
+
+        # Define tag_targets where multiple scans share the same tag
+        tag_targets = {
+            "scan_1": {
+                "uuids": [tag_uuid],
+                "scan_name": "Scan 1",
+                "scanner_name": "Scanner A"
+            },
+            "scan_2": {
+                "uuids": [tag_uuid],
+                "scan_name": "Scan 2",
+                "scanner_name": "Scanner B"
+            }
+        }
+
+        # Call the function from tenable_io_diagram_scanner_architecture
+        results = collect_tag_architecture(mock_io, tag_targets)
+
+        # Assertions
+        self.assertEqual(len(results), 2)
+        # io.tags.details should be called exactly ONCE due to caching
+        self.assertEqual(mock_io.tags.details.call_count, 1)
+        mock_io.tags.details.assert_called_with(tag_uuid)
+
+        # Verify results contain expected data
+        for res in results:
+            self.assertEqual(res['tag_value_uuid'], tag_uuid)
+            self.assertEqual(res['value'], "Arch Tag")
 
 if __name__ == '__main__':
     unittest.main()
