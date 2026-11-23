@@ -37,6 +37,8 @@ UUID_RE = re.compile(
     re.IGNORECASE
 )
 
+UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+
 # Helpers / Utilities
 def get_scan_details(tio_client, scan_id):
     """Wrapper to get scan details with retry on 404 errors."""
@@ -270,8 +272,8 @@ def collect_tag_filters_and_value(tio_client, target_map):
     """
     results = []
     tag_cache = {}  # ⚡ BOLT: Cache tag details to avoid redundant API calls
-    stats = {"hits": 0, "misses": 0}
-
+    cache_hits = 0
+    cache_misses = 0
     # Correct 2-value unpack from dict.items()
     for scan_id, meta in tqdm(target_map.items(), desc="Resolving tags", leave=False):
         if not isinstance(meta, dict):
@@ -282,7 +284,39 @@ def collect_tag_filters_and_value(tio_client, target_map):
         for raw_t in meta.get("uuids") or []:
             try:
                 t = normalize_tag_value_uuid(raw_t)
-                cached_tag = _resolve_tag_details_with_normalized(tio_client, t, tag_cache, stats)
+                # ⚡ BOLT: Use cache if available to reduce network requests
+                if t in tag_cache and isinstance(tag_cache[t], dict) and 'filters' in tag_cache[t]:
+                    cached_tag = tag_cache[t]
+                    cache_hits += 1
+                else:
+                    if t in tag_cache and not isinstance(tag_cache[t], dict):
+                        # It was a raw response, not processed yet
+                        tags = tag_cache[t]
+                    else:
+                        # Tenable.io API call: tag value details (contains 'value' and 'filters')
+                        tags = tio_client.tags.details(t)
+                        tag_cache[t] = tags
+                        cache_misses += 1
+
+                    tag_value = tags.get("value")
+                    if not tag_value:
+                        logging.info("No 'value' found for tag value UUID %s. Skipping.", t)
+                        tag_cache[t] = None
+                        continue
+
+                    filters = tags.get("filters")
+                    filter_list = parse_asset_filters(filters, t)
+                    if not filter_list:
+                        # parse_asset_filters already logged why
+                        tag_cache[t] = None
+                        continue
+
+                    cached_tag = {
+                        "value": tag_value,
+                        "filters": filter_list
+                    }
+                    tag_cache[t] = cached_tag
+
                 if cached_tag is None:
                     continue
 
